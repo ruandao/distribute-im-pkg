@@ -37,6 +37,11 @@ func (bConf BConfig) LoadAppId() string {
 
 func LoadBasicConfig() (BConfig, error) {
 	config := BConfig{}
+	if !fileExists("must.env") {
+		return  config, fmt.Errorf("must.env missed")
+	}
+	fmt.Println("must.env exist")
+
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -68,15 +73,7 @@ func LoadBasicConfig() (BConfig, error) {
 		}
 	}
 	fmt.Println("===================")
-
-	if err := viper.Unmarshal(&config); err != nil {
-		return config, lib.NewXError(err, "config.yaml parse fail....")
-	}
-
-	if !fileExists("must.env") {
-		return  config, fmt.Errorf("must.env missed")
-	}
-	fmt.Println("must.env exist")
+	
 	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend); 
 	if err !=nil {
 		return  config, lib.NewXError(err, "must.env missed")
@@ -99,6 +96,11 @@ func LoadBasicConfig() (BConfig, error) {
 	if len(problemEnvs) >= 1 {
 		fmt.Printf("be short of these environments: %v\n", problemEnvs)
 		os.Exit(1)
+	}
+
+
+	if err := viper.Unmarshal(&config); err != nil {
+		return config, lib.NewXError(err, "config.yaml parse fail....")
 	}
 
 	return config, nil
