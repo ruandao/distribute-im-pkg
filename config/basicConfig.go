@@ -73,6 +73,9 @@ func LoadBasicConfig() (BConfig, error) {
 		return config, lib.NewXError(err, "config.yaml parse fail....")
 	}
 
+	if !fileExists("must.env") {
+		return  config, fmt.Errorf("must.env missed")
+	}
 	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend); 
 	if err !=nil {
 		return  config, lib.NewXError(err, "must.env missed")
@@ -98,6 +101,19 @@ func LoadBasicConfig() (BConfig, error) {
 	}
 
 	return config, nil
+}
+
+// 文件是否存在
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true // 文件存在
+	}
+	if os.IsNotExist(err) {
+		return false // 文件不存在
+	}
+	// 其他错误（如权限问题等）
+	return false
 }
 
 // 判断是否为敏感环境变量
