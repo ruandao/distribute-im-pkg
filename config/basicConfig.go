@@ -38,7 +38,7 @@ func (bConf BConfig) LoadAppId() string {
 func LoadBasicConfig() (BConfig, error) {
 	config := BConfig{}
 	if !fileExists("must.env") {
-		return  config, fmt.Errorf("must.env missed")
+		return config, lib.NewXError(fmt.Errorf("must.env missed"), "")
 	}
 	fmt.Println("must.env exist")
 
