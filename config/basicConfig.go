@@ -10,12 +10,12 @@ import (
 )
 
 type BConfig struct {
-	BusinessName     string   `mapstructure:"business-name"`
+	BusinessName     string   `mapstructure:"business_name"`
 	Version          string   `mapstructure:"version"`
 	IP               string   `mapstructure:"ip"`
 	Port             string   `mapstructure:"port"`
-	EtcdConfigCenter []string `mapstructure:"etcd-config-center"`
-	Lease            int64    `mapstructure:"lease-time-seconds"`
+	EtcdConfigCenter []string `mapstructure:"etcd_config_center"`
+	Lease            int64    `mapstructure:"lease_time_seconds"`
 }
 
 func (bConfig BConfig) AppConfPath() string {
