@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/ruandao/distribute-im-pkg/lib"
 	"github.com/spf13/viper"
@@ -46,10 +48,38 @@ func LoadBasicConfig() (BConfig, error) {
 	viper.SetEnvPrefix("APP")     // 环境变量需以APP_开头，如APP_DATABASE_URL
 	viper.BindEnv("port", "PORT") // APP_PORT=8901 go run .  ， 这样就把端口修改为8901
 
-	fmt.Printf("All config keys: %v\n", viper.AllKeys())
+	// 获取所有环境变量键名
+	keys := viper.AllKeys()
+	// 排序键名以便更好的展示
+	sort.Strings(keys)
+	fmt.Println("所有环境变量:")
+	fmt.Println("-------------------")
+
+	// 遍历并打印所有环境变量
+	for _, key := range keys {
+		value := viper.GetString(key)
+		// 为了安全，这里可以过滤掉敏感信息，如包含"PASSWORD"、"TOKEN"等关键词的变量
+		if isSensitive(key) {
+			fmt.Printf("%s: ******\n", key)
+		} else {
+			fmt.Printf("%s: %s\n", key, value)
+		}
+	}
+
 	if err := viper.Unmarshal(&config); err != nil {
 		return config, lib.NewXError(err, "config.yaml parse fail....")
 	}
 
 	return config, nil
+}
+
+// 判断是否为敏感环境变量
+func isSensitive(key string) bool {
+	sensitiveKeywords := []string{"PASSWORD", "TOKEN", "SECRET", "KEY", "CREDENTIAL"}
+	for _, kw := range sensitiveKeywords {
+		if strings.Contains(strings.ToUpper(key), kw) {
+			return true
+		}
+	}
+	return false
 }
