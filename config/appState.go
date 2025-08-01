@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,7 +60,7 @@ func registerState(appStateVal atomic.Value) error {
 
 	conf := readConf()
 	etcdCli, err := etcdLib.New(etcdLib.Config{
-		Endpoints:   conf.EtcdConfigCenter,
+		Endpoints:   strings.Split(conf.EtcdAddrs, ","),
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {

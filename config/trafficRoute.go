@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -67,7 +68,7 @@ func init() {
 
 func watchRoute(ctx context.Context, config *Config) error {
 	cli, err := etcdLib.New(etcdLib.Config{
-		Endpoints:   config.EtcdConfigCenter,
+		Endpoints:   strings.Split(config.EtcdAddrs, ","),
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {

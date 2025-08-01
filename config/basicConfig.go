@@ -14,7 +14,7 @@ type BConfig struct {
 	Version          string   `mapstructure:"version"`
 	IP               string   `mapstructure:"ip"`
 	Port             string   `mapstructure:"port"`
-	EtcdConfigCenter []string `mapstructure:"etcd_config_center"`
+	EtcdAddrs string 	`mapstructure:"etcd_addrs"`
 	Lease            int64    `mapstructure:"lease_time_seconds"`
 }
 

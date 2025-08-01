@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,7 +62,7 @@ func RegisterDepList(depList []string) {
 
 func readAppConfig(ctx context.Context, bConfig BConfig) (*AppConfig, error) {
 	cli, err := etcdLib.New(etcdLib.Config{
-		Endpoints:   bConfig.EtcdConfigCenter,
+		Endpoints:   strings.Split(bConfig.EtcdAddrs, ","),
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
