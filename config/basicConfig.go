@@ -76,6 +76,7 @@ func LoadBasicConfig() (BConfig, error) {
 	if !fileExists("must.env") {
 		return  config, fmt.Errorf("must.env missed")
 	}
+	fmt.Println("must.env exist")
 	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend); 
 	if err !=nil {
 		return  config, lib.NewXError(err, "must.env missed")
