@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -69,6 +71,30 @@ func LoadBasicConfig() (BConfig, error) {
 
 	if err := viper.Unmarshal(&config); err != nil {
 		return config, lib.NewXError(err, "config.yaml parse fail....")
+	}
+
+	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend); 
+	if err !=nil {
+		return  config, lib.NewXError(err, "must.env missed")
+	}
+	content, err := io.ReadAll(fd)
+	if err != nil {
+		return  config, lib.NewXError(err, "must.env read err")
+	}
+	lines := strings.Split(string(content), "\n")
+	problemEnvs := []string{}
+	for _, line := range lines {
+		key := strings.Trim(line, "")
+		if key != "" {
+			val := viper.GetString(key)
+			if val == "" {
+				problemEnvs = append(problemEnvs, key)
+			}
+		}
+	}
+	if len(problemEnvs) >= 1 {
+		fmt.Printf("be short of these environments: %v\n", problemEnvs)
+		os.Exit(1)
 	}
 
 	return config, nil
