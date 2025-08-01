@@ -65,6 +65,7 @@ func LoadBasicConfig() (BConfig, error) {
 			fmt.Printf("%s: %s\n", key, value)
 		}
 	}
+	fmt.Println("===================")
 
 	if err := viper.Unmarshal(&config); err != nil {
 		return config, lib.NewXError(err, "config.yaml parse fail....")
