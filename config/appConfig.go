@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	sortdeplist "github.com/ruandao/distribute-im-pkg/config/util/sortDepList"
+	sort "github.com/ruandao/distribute-im-pkg/config/util/sortDepList"
 	lib "github.com/ruandao/distribute-im-pkg/lib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	etcdLib "go.etcd.io/etcd/client/v3"
@@ -41,12 +41,16 @@ var appConfCh chan AppConfig
 var once sync.Once
 var depListVal atomic.Value
 
-func RegisterDepList(depList []string) {
+func RegisteredDependentServiceList(depList []string) {
+	// depList 是硬编码在代码中的, 当前服务依赖基础服务
+	// depListVal, 是一个临时容器, 不直接使用变量是为了避免cpu的缓存问题
+	// depListVal, 会在后面跟 etcd 中读取的服务依赖做比较,确保 进行部署的同学知道服务的依赖情况
 	depListVal.Store(depList)
-	fmt.Printf("depList: %v load: %v", depList, depListVal.Load())
+	fmt.Printf("current service depList: %v\n", depList)
+
 	once.Do(func() {
 		depList := depListVal.Load().([]string)
-		sortdeplist.Sort(depList)
+		sort.SortInplace(depList)
 
 		appConfCh = make(chan AppConfig)
 		writeAppConf(AppConfig{})

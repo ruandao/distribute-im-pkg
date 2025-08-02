@@ -52,7 +52,7 @@ func readConf() *Config {
 }
 
 func writeAppConf(appConf AppConfig) error {
-	sortdeplist.Sort(appConf.DepServices)
+	sortdeplist.SortInplace(appConf.DepServices)
 	depList := depListVal.Load().([]string)
 	if !reflect.DeepEqual(appConf.DepServices, depList) {
 		err := errors.New(
@@ -81,7 +81,7 @@ func writeBConf(bConf BConfig) {
 }
 
 func LoadConfig(ctx context.Context, depList []string) (*Config, error) {
-	RegisterDepList(depList)
+	RegisteredDependentServiceList(depList)
 
 	bConfig, xerr := LoadBasicConfig()
 	if xerr != nil {
