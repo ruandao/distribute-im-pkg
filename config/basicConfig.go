@@ -85,6 +85,7 @@ func LoadBasicConfig() (BConfig, error) {
 	problemEnvs := []string{}
 	for _, line := range lines {
 		key := strings.Trim(line, "")
+		key, _ = strings.CutPrefix(key, "APP_")
 		if key != "" {
 			val := viper.GetString(key)
 			if val == "" {
