@@ -89,7 +89,7 @@ func LoadBasicConfig() (BConfig, error) {
 		if key != "" {
 			val := viper.GetString(key)
 			if val == "" {
-				problemEnvs = append(problemEnvs, key)
+				problemEnvs = append(problemEnvs, "APP_" + key)
 			}
 		}
 	}
