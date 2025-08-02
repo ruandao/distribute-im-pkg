@@ -46,7 +46,7 @@ func RegisteredDependentServiceList(depList []string) {
 	// depListVal, 是一个临时容器, 不直接使用变量是为了避免cpu的缓存问题
 	// depListVal, 会在后面跟 etcd 中读取的服务依赖做比较,确保 进行部署的同学知道服务的依赖情况
 	depListVal.Store(depList)
-	fmt.Printf("current service depList: %v\n", depList)
+	fmt.Printf("current service dependent on these services: %v\n", depList)
 
 	once.Do(func() {
 		depList := depListVal.Load().([]string)
