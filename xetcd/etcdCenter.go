@@ -93,6 +93,7 @@ type ShareDBConfig struct {
 // RouteTag: ShareInstance: []DBConfig
 func (content *Content) GetShareDBConfig(keyPrefix string) map[string]map[string]*ShareDBConfig {
 	routeMap := make(map[string]map[string]*ShareDBConfig)
+	found := false
 	content.Range(func(key string, value string) bool {
 		if strings.HasPrefix(key, keyPrefix) {
 			// key
@@ -114,7 +115,7 @@ func (content *Content) GetShareDBConfig(keyPrefix string) map[string]map[string
 				return true
 			}
 			// fmt.Printf("tag: %v instance: %v dbConfig: %v err: %v\n", tag, instance, dbConfig, err)
-
+			found = true
 			instanceMap := routeMap[tag]
 			if instanceMap == nil {
 				instanceMap = make(map[string]*ShareDBConfig)
@@ -146,16 +147,23 @@ func (content *Content) GetShareDBConfig(keyPrefix string) map[string]map[string
 		return true
 	})
 	// fmt.Printf("getShareDBConfig keyPrefix: %v value: %v\n", keyPrefix, routeMap)
+	if !found {
+		return nil
+	}
 	return routeMap
 }
 // if routeTag no match, it will downgrade to "default"
 // if shareInstance no match, it will return nil
 func (content *Content) GetShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareDBConfig {
 	shareDBConfig := content.GetShareDBConfig(keyPrefix)
+	if shareDBConfig == nil {
+		return nil
+	}
 	dedicateRoute := shareDBConfig[routeTag]
 	if dedicateRoute == nil {
 		dedicateRoute = shareDBConfig["default"]
 	}
+
 	if dedicateRoute == nil {
 		return  nil
 	}
