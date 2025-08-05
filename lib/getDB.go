@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"gorm.io/driver/mysql"
@@ -18,6 +19,14 @@ func (dbConfig DBConfig) getDSN() string {
 	// dsn := "user:password@tcp(127.0.0.1:3306)/test_db?charset=utf8mb4&parseTime=True&loc=Local"
 
 	return fmt.Sprintf("%v:%v@tcp(%v)/%v?charset=utf8mb4&parseTime=True&loc=Local", dbConfig.User, dbConfig.Password, dbConfig.Addr, dbConfig.DBName)
+}
+func DBConfigFrom(val string) (*DBConfig, error) {
+	dbConfig := &DBConfig{}
+	err := json.Unmarshal([]byte(val), dbConfig)
+	if err != nil {
+		return nil, err
+	}
+	return  dbConfig, nil
 }
 
 var dbConfig DBConfig
