@@ -58,7 +58,7 @@ func init() {
 				}
 			}
 			if hasChange {
-				logx.Infof("route: %v\n", WriteIntoJSONIndent(route))
+				logx.Infof("route: %v\n", lib.WriteIntoJSONIndent(route))
 				logx.Infof("event: %v\n", event)
 				TrafficRouteVal.Store(route)
 			}

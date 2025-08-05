@@ -77,7 +77,7 @@ func registerState(appStateVal atomic.Value) error {
 	}
 	leaseID := leaseResp.ID
 
-	stateVal := WriteIntoJSONIndent(appStateVal.Load())
+	stateVal := lib.WriteIntoJSONIndent(appStateVal.Load())
 	for _, key := range conf.AppStatePaths() {
 		_, err := etcdCli.Put(ctx, key, stateVal, etcdLib.WithLease(leaseID))
 		if err != nil {

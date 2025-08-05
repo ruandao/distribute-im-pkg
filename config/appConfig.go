@@ -88,7 +88,7 @@ func readAppConfig(ctx context.Context, bConfig BConfig) (*AppConfig, error) {
 		value := kv.Value
 
 		var _appConfig AppConfig
-		if xerr := ReadFromJSON(value, &_appConfig); xerr != nil {
+		if xerr := lib.ReadFromJSON(value, &_appConfig); xerr != nil {
 			logx.Errorf("%v App配置有误: %v", bConfig.LoadAppId(), xerr)
 			continue
 		}
