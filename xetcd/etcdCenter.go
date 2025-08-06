@@ -89,9 +89,25 @@ type ShareDBConfig struct {
 	ConnConfig    []lib.DBConfig
 }
 
+func (content *Content) GetSelfConfig(bizName string, role string, version string, share_name string) (string, bool) {
+	// /service/业务/职能/版本号/数据分片/config
+	configPath := fmt.Sprintf("/service/%v/%v/%v/%v/config", bizName, role, version, share_name)
+	var ret string
+	found := false
+	content.Range(func(key, value string) bool {
+		if key == configPath {
+			ret = value
+			found = true
+
+			return false
+		}
+		return true
+	})
+	return ret, found
+}
 
 // RouteTag: ShareInstance: []DBConfig
-func (content *Content) GetShareDBConfig(keyPrefix string) map[string]map[string]*ShareDBConfig {
+func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string]map[string]*ShareDBConfig {
 	routeMap := make(map[string]map[string]*ShareDBConfig)
 	found := false
 	content.Range(func(key string, value string) bool {
@@ -154,8 +170,8 @@ func (content *Content) GetShareDBConfig(keyPrefix string) map[string]map[string
 }
 // if routeTag no match, it will downgrade to "default"
 // if shareInstance no match, it will return nil
-func (content *Content) GetShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareDBConfig {
-	shareDBConfig := content.GetShareDBConfig(keyPrefix)
+func (content *Content) GetDepServicesShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareDBConfig {
+	shareDBConfig := content.GetDepServicesShareDBConfig(keyPrefix)
 	if shareDBConfig == nil {
 		return nil
 	}
@@ -169,7 +185,7 @@ func (content *Content) GetShareDBInstancesConfig(keyPrefix string, routeTag str
 	}
 
 	dedicateInstance := dedicateRoute[shareInstance]
-	return  dedicateInstance
+	return dedicateInstance
 }
 
 func New(ctx context.Context, Endpoints []string) (*Content, error) {
