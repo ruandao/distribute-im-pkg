@@ -90,8 +90,8 @@ type ShareDBConfig struct {
 }
 
 func (content *Content) GetSelfConfig(bizName string, role string, version string, share_name string) (string, string, bool) {
-	// /service/业务/职能/版本号/数据分片/config
-	configPath := fmt.Sprintf("/service/%v/%v/%v/%v/config", bizName, role, version, share_name)
+	// /appConfig/业务/职能/版本号/数据分片/config
+	configPath := fmt.Sprintf("/appConfig/%v/%v/%v/%v/config", bizName, role, version, share_name)
 	var ret string
 	found := false
 	content.Range(func(key, value string) bool {
