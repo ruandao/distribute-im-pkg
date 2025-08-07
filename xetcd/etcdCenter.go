@@ -119,9 +119,9 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 			// /default/db0/127.0.0.1:3306/state
 			pieces := strings.Split(keyWithoutPrefix, "/")
 			tag, instance := pieces[1], pieces[2]
-			
+
 			var dbConfig *lib.DBConfig = &lib.DBConfig{}
-			
+
 			err := lib.ReadFromJSON([]byte(value), dbConfig)
 			// 为了避免应用程序级联崩溃, 我们将在这里忽略错误
 			if err != nil {
@@ -157,7 +157,6 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 				instanceMap[instance] = instanceOnSpecficShare
 			}()
 
-			
 			instanceOnSpecficShare.ConnConfig = append(instanceOnSpecficShare.ConnConfig, *dbConfig)
 		}
 		return true
@@ -168,6 +167,7 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 	}
 	return routeMap
 }
+
 // if routeTag no match, it will downgrade to "default"
 // if shareInstance no match, it will return nil
 func (content *Content) GetDepServicesShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareDBConfig {
@@ -181,7 +181,7 @@ func (content *Content) GetDepServicesShareDBInstancesConfig(keyPrefix string, r
 	}
 
 	if dedicateRoute == nil {
-		return  nil
+		return nil
 	}
 
 	dedicateInstance := dedicateRoute[shareInstance]
