@@ -9,6 +9,7 @@ import (
 	"time"
 
 	confreadych "github.com/ruandao/distribute-im-pkg/config/confReadyCh"
+
 	lib "github.com/ruandao/distribute-im-pkg/lib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	etcdLib "go.etcd.io/etcd/client/v3"

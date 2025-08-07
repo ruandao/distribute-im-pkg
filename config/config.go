@@ -9,6 +9,7 @@ import (
 
 	confreadych "github.com/ruandao/distribute-im-pkg/config/confReadyCh"
 	sortdeplist "github.com/ruandao/distribute-im-pkg/config/util/sortDepList"
+
 	lib "github.com/ruandao/distribute-im-pkg/lib"
 )
 
@@ -88,10 +89,17 @@ func LoadConfig(ctx context.Context, depList []string) (*Config, error) {
 		return nil, xerr
 	}
 	writeBConf(bConfig)
+	fmt.Printf("bConfig: %v\n", bConfig)
+	fmt.Printf("ListenAddr: %v\n", bConfig.ListenAddr())
+	fmt.Printf("RegisterAddr: %v\n", bConfig.RegisterAddr())
 
 	_appConf, xerr := readAppConfig(ctx, bConfig)
 	if xerr != nil {
 		return nil, xerr
+	}
+
+	if !sortdeplist.DepListEq(depList, _appConf.DepServices) {
+		return nil, lib.NewXError(fmt.Errorf("应用需要的依赖服务和配置中心注册的依赖服务不一致"), fmt.Sprintf(" appDepList: %v\n etcdDepList: %v\n", depList, _appConf.DepServices))
 	}
 
 	writeAppConf(*_appConf)

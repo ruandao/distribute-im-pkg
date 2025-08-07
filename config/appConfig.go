@@ -3,16 +3,14 @@ package config
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	sort "github.com/ruandao/distribute-im-pkg/config/util/sortDepList"
+
 	lib "github.com/ruandao/distribute-im-pkg/lib"
-	"github.com/ruandao/distribute-im-pkg/lib/logx"
-	etcdLib "go.etcd.io/etcd/client/v3"
+	"github.com/ruandao/distribute-im-pkg/xetcd"
 )
 
 type DBConfig struct {
@@ -65,34 +63,22 @@ func RegisteredDependentServiceList(depList []string) {
 }
 
 func readAppConfig(ctx context.Context, bConfig BConfig) (*AppConfig, error) {
-	cli, err := etcdLib.New(etcdLib.Config{
-		Endpoints:   strings.Split(bConfig.EtcdAddrs, ","),
-		DialTimeout: 5 * time.Second,
-	})
+
+	etcdContent, err := xetcd.New(ctx, strings.Split(bConfig.EtcdAddrs, ","))
 	if err != nil {
 		return nil, lib.NewXError(err, "Connect Etcd Failed")
 	}
-	defer cli.Close()
-
-	bKeyPath := []byte(bConfig.AppConfPath())
-	gResp, err := cli.Get(ctx, bConfig.AppConfPath())
-	if err != nil {
-		return nil, lib.NewXError(err, fmt.Sprintf("Get %v Config Data Fail", bConfig.LoadAppId()))
+	defer etcdContent.Close()
+	configPath, appConfigStr, found := etcdContent.GetSelfConfig(bConfig.BusinessName, bConfig.Role, bConfig.Version, bConfig.ShareName)
+	if !found {
+		return nil, lib.NewXError(fmt.Errorf("app %v config not found on etcd for path: %v", bConfig.LoadAppId(), configPath), "")
 	}
-	for _, kv := range gResp.Kvs {
-		key := kv.Key
-		if !reflect.DeepEqual(key, bKeyPath) {
-			continue
-		}
+	fmt.Printf("appConfig: %v\n", appConfigStr)
 
-		value := kv.Value
-
-		var _appConfig AppConfig
-		if xerr := lib.ReadFromJSON(value, &_appConfig); xerr != nil {
-			logx.Errorf("%v App配置有误: %v", bConfig.LoadAppId(), xerr)
-			continue
-		}
-		return &_appConfig, nil
+	var _appConfig AppConfig
+	if xerr := lib.ReadFromJSON([]byte(appConfigStr), &_appConfig); xerr != nil {
+		return nil, lib.NewXError(xerr, fmt.Sprintf("%v App配置有误", bConfig.LoadAppId()))
 	}
-	return nil, lib.NewXError(fmt.Errorf("%v App配置未找到", bConfig.LoadAppId()), "")
+	
+	return &_appConfig, nil
 }

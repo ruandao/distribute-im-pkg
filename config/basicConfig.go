@@ -13,19 +13,21 @@ import (
 
 type BConfig struct {
 	BusinessName     string   `mapstructure:"business_name"`
+	Role 						 string   `mapstructure:"role"`
 	Version          string   `mapstructure:"version"`
+	ShareName 	     string   `mapstructure:"share_name"`
 	IP               string   `mapstructure:"ip"`
 	Port             string   `mapstructure:"port"`
-	EtcdAddrs string 	`mapstructure:"etcd_addrs"`
+	EtcdAddrs 			 string 	`mapstructure:"etcd_addrs"`
 	Lease            int64    `mapstructure:"lease_time_seconds"`
 }
 
 func (bConfig BConfig) AppConfPath() string {
-	keyPath := fmt.Sprintf("/service/%v/%v/config", bConfig.BusinessName, bConfig.Version)
+	keyPath := fmt.Sprintf("/appConfig/%v/%v/config", bConfig.BusinessName, bConfig.Version)
 	return keyPath
 }
 func (bConf BConfig) ListenAddr() string {
-	return fmt.Sprintf("127.0.0.1:%v", bConf.Port)
+	return fmt.Sprintf("0.0.0.0:%v", bConf.Port)
 }
 func (bConf BConfig) RegisterAddr() string {
 	return fmt.Sprintf("%v:%v", bConf.IP, bConf.Port)
@@ -53,7 +55,7 @@ func LoadBasicConfig() (BConfig, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("APP")     // 环境变量需以APP_开头，如APP_DATABASE_URL
 	viper.BindEnv("port", "PORT") // APP_PORT=8901 go run .  ， 这样就把端口修改为8901
-
+	viper.BindEnv("ip", "IP")
 	// 获取所有环境变量键名
 	keys := viper.AllKeys()
 	// 排序键名以便更好的展示
