@@ -89,7 +89,7 @@ type ShareDBConfig struct {
 	ConnConfig    []lib.DBConfig
 }
 
-func (content *Content) GetSelfConfig(bizName string, role string, version string, share_name string) (string, bool) {
+func (content *Content) GetSelfConfig(bizName string, role string, version string, share_name string) (string, string, bool) {
 	// /service/业务/职能/版本号/数据分片/config
 	configPath := fmt.Sprintf("/service/%v/%v/%v/%v/config", bizName, role, version, share_name)
 	var ret string
@@ -103,7 +103,7 @@ func (content *Content) GetSelfConfig(bizName string, role string, version strin
 		}
 		return true
 	})
-	return ret, found
+	return configPath, ret, found
 }
 
 // RouteTag: ShareInstance: []DBConfig
