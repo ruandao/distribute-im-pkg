@@ -9,38 +9,58 @@ import (
 
 	"github.com/ruandao/distribute-im-pkg/lib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
+
+	bConfLib "github.com/ruandao/distribute-im-pkg/config/basicConfig"
+
 	etcdLib "go.etcd.io/etcd/client/v3"
 )
 
-type Content struct {
+type XContent struct {
 	Endpoints []string
 	cli       *etcdLib.Client
 	c         sync.Map
 	closeCh   chan struct{}
+	// string: []*ClusterItem
+	clusterWatchMap XMap
+	// string: []KVItem
+	keyWatchMap XMap
 }
 
-func (content *Content) connect(ctx context.Context) error {
+type XMap struct {
+	sync.Map
+}
+
+func (xMap *XMap)Keys() []string {
+	var keys []string
+	xMap.Range(func(key, value any) bool {
+		keys = append(keys, key.(string))
+		return true
+	})
+	return keys
+}
+
+func (content *XContent) connect(ctx context.Context) error {
 	cli, err := etcdLib.New(etcdLib.Config{
 		Endpoints:   content.Endpoints,
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
-		return lib.NewXError(err, "connect etcd failed")
+		return xerr.NewXError(err, "connect etcd failed")
 	}
 	content.cli = cli
 	content.closeCh = make(chan struct{})
 
 	gResp, err := cli.Get(ctx, "/", etcdLib.WithPrefix())
 	if err != nil {
-		return lib.NewXError(err, "Get Config Data Fail")
+		return xerr.NewXError(err, "Get Config Data Fail")
 	}
 
 	for _, kv := range gResp.Kvs {
 		key := string(kv.Key)
 		value := string(kv.Value)
-
 		content.c.Store(key, value)
-		logx.Info(fmt.Sprintf("update key: %v value: %v\n", key, value))
+		logx.Info(fmt.Sprintf("Load key: %v value: %v", key, value))
 	}
 
 	go func() {
@@ -51,19 +71,57 @@ func (content *Content) connect(ctx context.Context) error {
 				if !ok {
 					break
 				}
+
+				notifyList := []string{}
 				for _, event := range kvChange.Events {
 					switch event.Type {
 					case etcdLib.EventTypePut:
 						key := string(event.Kv.Key)
 						value := string(event.Kv.Value)
-						content.c.Store(key, value)
-						logx.Info(fmt.Sprintf("update key: %v value: %v\n", key, value))
+						pre, _ := content.c.Load(key)
+						if pre != value {
+							content.c.Store(key, value)
+							notifyList = append(notifyList, key)
+							logx.Info(fmt.Sprintf("update key: %v pre: %v new: %v", key, pre, value))
+						}
 					case etcdLib.EventTypeDelete:
 						key := string(event.Kv.Key)
 						content.c.Delete(key)
-						logx.Info(fmt.Sprintf("delete key: %v \n", key))
+						notifyList = append(notifyList, key)
+						logx.Info(fmt.Sprintf("delete key: %v", key))
 					}
 				}
+
+				notifySet := lib.NewXSet(notifyList)
+
+				clusterSet := lib.NewXSet(content.clusterWatchMap.Keys())
+				clusterNotifyList := clusterSet.Intersect(notifySet, func(selfElem, argElem string) bool {
+					return strings.HasPrefix(argElem, selfElem)
+				})
+
+				kvSet := lib.NewXSet(content.keyWatchMap.Keys())
+				kvNotifyList := kvSet.Intersect(notifySet, func(selfElem, argElem string) bool {
+					return selfElem == argElem
+				})
+
+				for _, key := range clusterNotifyList {
+					_updateList, _ := content.clusterWatchMap.Load(key)
+					updateList := _updateList.([]*ClusterItem)
+					cluster := content.GetDepServicesCluster(key)
+					for _, updateItem := range updateList {
+						updateItem.changeFunc(cluster)
+					}
+				}
+
+				for _, key := range kvNotifyList {
+					_updateList, _ := content.clusterWatchMap.Load(key)
+					updateList := _updateList.([]*KVItem)
+					retV := content.Get(key)
+					for _, updateItem := range updateList {
+						updateItem.changeFunc(retV)
+					}
+				}
+
 			case <-content.closeCh:
 				return
 			}
@@ -71,25 +129,47 @@ func (content *Content) connect(ctx context.Context) error {
 	}()
 	return nil
 }
-func (content *Content) Close() {
+func (content *XContent) Close() {
 	close(content.closeCh)
 	content.cli.Close()
 }
 
-func (content *Content) Range(fn func(key string, value string) bool) {
+func (content *XContent) Range(fn func(key string, value string) bool) {
 	content.c.Range(func(key, value any) bool {
 		ret := fn(key.(string), value.(string))
 		return ret
 	})
 }
+func (content *XContent) Get(key string) (*string) {
+	ret, found := content.c.Load(key)
+	if !found {
+		return nil
+	}
+	retV := ret.(string)
+	return &retV
+}
+func (content *XContent) PutLease(ctx context.Context, key string, val string, seconds int64) (error) {
+	leaseResp, err := content.cli.Grant(ctx, seconds)
+	if err != nil {
+		xerr := xerr.NewXError(err, "Get Grant Fail")
+		return xerr
+	}
+	leaseID := leaseResp.ID
 
-type ShareDBConfig struct {
-	RouteTag      string
-	ShareInstance string
-	ConnConfig    []lib.DBConfig
+	_, err = content.cli.Put(ctx, key, val, etcdLib.WithLease(leaseID))
+	if err != nil {
+		xerr := xerr.NewXError(err, fmt.Sprintf("set key %s fail: %v", key, err))
+		return xerr
+	}
+
+	return nil
 }
 
-func (content *Content) GetSelfConfig(bizName string, role string, version string, share_name string) (string, string, bool) {
+
+func (content *XContent) GetSelfConfigX(bConfig bConfLib.BConfig) (string, bool) {
+	return content.GetSelfConfig(bConfig.BusinessName, bConfig.Role, bConfig.Version, bConfig.ShareName)
+}
+func (content *XContent) GetSelfConfig(bizName string, role string, version string, share_name string) (string, bool) {
 	// /appConfig/业务/职能/版本号/数据分片/config
 	configPath := fmt.Sprintf("/appConfig/%v/%v/%v/%v/config", bizName, role, version, share_name)
 	var ret string
@@ -103,38 +183,29 @@ func (content *Content) GetSelfConfig(bizName string, role string, version strin
 		}
 		return true
 	})
-	return configPath, ret, found
+	return ret, found
 }
 
 // RouteTag: ShareInstance: []DBConfig
-func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string]map[string]*ShareDBConfig {
-	routeMap := make(map[string]map[string]*ShareDBConfig)
+func (content *XContent) GetDepServicesCluster(keyPrefix string) *RouteShareConns {
+	routeMap := make(map[string]map[string]*ShareConfig)
 	found := false
 	content.Range(func(key string, value string) bool {
 		if strings.HasPrefix(key, keyPrefix) {
 			// key
 			// /appState/auth/mysql/default/db0/127.0.0.1:3306/state
+			// `keyPrefix`/`routeTag`/`shareName`/`instanceIPPort`/state
 			keyWithoutPrefix, _ := strings.CutPrefix(key, keyPrefix)
 			// keyWithoutPrefix
 			// /default/db0/127.0.0.1:3306/state
 			pieces := strings.Split(keyWithoutPrefix, "/")
 			tag, instance := pieces[1], pieces[2]
 
-			var dbConfig *lib.DBConfig = &lib.DBConfig{}
-
-			err := lib.ReadFromJSON([]byte(value), dbConfig)
-			// 为了避免应用程序级联崩溃, 我们将在这里忽略错误
-			if err != nil {
-				fmt.Printf("parse key: %v\n", key)
-				fmt.Printf("for value: %v\n", value)
-				fmt.Printf("because err: %v\n", err)
-				return true
-			}
 			// fmt.Printf("tag: %v instance: %v dbConfig: %v err: %v\n", tag, instance, dbConfig, err)
 			found = true
 			instanceMap := routeMap[tag]
 			if instanceMap == nil {
-				instanceMap = make(map[string]*ShareDBConfig)
+				instanceMap = make(map[string]*ShareConfig)
 			}
 			defer func() {
 				// fmt.Printf("routeMap: %v\n", routeMap)
@@ -143,7 +214,7 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 
 			instanceOnSpecficShare := instanceMap[instance]
 			if instanceOnSpecficShare == nil {
-				instanceOnSpecficShare = &ShareDBConfig{
+				instanceOnSpecficShare = &ShareConfig{
 					RouteTag:      tag,
 					ShareInstance: instance,
 					ConnConfig:    nil,
@@ -157,7 +228,7 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 				instanceMap[instance] = instanceOnSpecficShare
 			}()
 
-			instanceOnSpecficShare.ConnConfig = append(instanceOnSpecficShare.ConnConfig, *dbConfig)
+			instanceOnSpecficShare.ConnConfig = append(instanceOnSpecficShare.ConnConfig, value)
 		}
 		return true
 	})
@@ -165,32 +236,133 @@ func (content *Content) GetDepServicesShareDBConfig(keyPrefix string) map[string
 	if !found {
 		return nil
 	}
-	return routeMap
+	cluster := RouteShareConns{M: routeMap}
+	return &cluster
 }
 
 // if routeTag no match, it will downgrade to "default"
 // if shareInstance no match, it will return nil
-func (content *Content) GetDepServicesShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareDBConfig {
-	shareDBConfig := content.GetDepServicesShareDBConfig(keyPrefix)
-	if shareDBConfig == nil {
-		return nil
-	}
-	dedicateRoute := shareDBConfig[routeTag]
-	if dedicateRoute == nil {
-		dedicateRoute = shareDBConfig["default"]
-	}
-
-	if dedicateRoute == nil {
-		return nil
-	}
-
-	dedicateInstance := dedicateRoute[shareInstance]
-	return dedicateInstance
+func (content *XContent) GetDepServicesShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareConfig {
+	shareCluster := content.GetDepServicesCluster(keyPrefix)
+	return shareCluster.Get(routeTag, shareInstance)
 }
 
-func New(ctx context.Context, Endpoints []string) (*Content, error) {
-	content := &Content{Endpoints: Endpoints}
+func (content *XContent)KeyWatch(key string, changeFunc KVChangeCB) func() {
+	cnt := 10
+	for cnt > 0 {
+		cnt --
+		wItem := &KVItem{key: key, changeFunc: changeFunc}
+		removeF := func() {
+			content.KeyWatchRemove(wItem)
+		}
+		pre, loaded := content.keyWatchMap.LoadOrStore(key, []*KVItem{wItem})
+		if !loaded {
+			logx.Infof("KeyWatch LoadOrStore: store %v pre: %v\n", key, pre)
+			return removeF
+		}
+		logx.Infof("KeyWatch %v pre: %v\n", key, pre)
+		var preList []*KVItem = nil
+		if pre != nil {
+			preList = pre.([]*KVItem)
+		}
+		new := append(preList, wItem)
+		swapped := content.keyWatchMap.CompareAndSwap(key, pre, new)
+		logx.Infof("KeyWatch %v pre: %v new: %v swapped: %v\n", key, pre, new, swapped)
+		if swapped {
+			return removeF
+		}
+	}
+	return nil
+}
+
+func (content *XContent) KeyWatchRemove(wItem *KVItem) {
+	logx.Infof("KeyWatchRemove %v\n", wItem)
+	cnt := 10
+	for cnt >0{
+		cnt--
+		pre, _ := content.keyWatchMap.Load(wItem.key)
+		logx.Infof("KeyWatchRemove key: %v pre: %v wItem: %v\n", wItem.key, pre, wItem)
+		if pre == nil {
+			return
+		}
+		newList := []*KVItem{}
+		for _, item := range pre.([]*KVItem) {
+			if item == wItem {
+				continue
+			}
+			newList = append(newList, item)
+		}
+		updateSuccess := false
+		if len(newList) == 0 {
+			updateSuccess = content.keyWatchMap.CompareAndDelete(wItem.key, pre)
+		} else {
+			updateSuccess = content.keyWatchMap.CompareAndSwap(wItem.key, pre, newList)
+		}
+		if updateSuccess {
+			return
+		}
+	}
+}
+
+func (content *XContent) ClusterWatch(keyPrefix string, changeFunc ClusterChangeCB) func() {
+	cnt := 10
+	for cnt >0 {
+		cnt--
+		wItem := &ClusterItem{keyPrefix: keyPrefix, changeFunc: changeFunc}
+		removeF := func() {
+				content.ClusterWatchRemove(wItem)
+			}
+		pre, loaded := content.clusterWatchMap.LoadOrStore(keyPrefix, []*ClusterItem{wItem})
+		if !loaded {
+			return removeF
+		}
+		logx.Infof("ClusterWatch %v pre: %v\n", keyPrefix, pre)
+		var preList []*ClusterItem = nil
+		if pre != nil {
+			preList = pre.([]*ClusterItem)
+		}
+		new := append(preList, wItem)
+		swapped := content.clusterWatchMap.CompareAndSwap(keyPrefix, pre, new)
+		logx.Infof("ClusterWatch %v pre: %v new: %v swapped: %v map: %v\n", keyPrefix, pre, new, swapped, content.clusterWatchMap)
+		if swapped {
+			return removeF
+		}
+	}
+	return nil
+}
+
+func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
+	for {
+		pre, _ := content.clusterWatchMap.Load(wItem.keyPrefix)
+		if pre == nil {
+			return
+		}
+		newList := []*ClusterItem{}
+		for _, item := range pre.([]*ClusterItem) {
+			if item == wItem {
+				continue
+			}
+			newList = append(newList, item)
+		}
+		updateSuccess := false
+		if len(newList) == 0 {
+			updateSuccess = content.clusterWatchMap.CompareAndDelete(wItem.keyPrefix, pre)
+		} else {
+			updateSuccess = content.clusterWatchMap.CompareAndSwap(wItem.keyPrefix, pre, newList)
+		}
+		if updateSuccess {
+			return
+		}
+	}
+}
+
+func New( bConfig *bConfLib.BConfig) (*XContent, error) {
+	ctx := context.Background()
+	content := &XContent{Endpoints: strings.Split(bConfig.EtcdAddrs, ",")}
+	logx.Infof("etcd connect start\n")
+	logx.Infof("etcd connect endpoints: %v\n", strings.Split(bConfig.EtcdAddrs, ","))
 	err := content.connect(ctx)
+	logx.Infof("etcd connect done, err: %v \n", err)
 	if err != nil {
 		return nil, err
 	}

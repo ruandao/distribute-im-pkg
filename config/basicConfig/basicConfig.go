@@ -1,4 +1,4 @@
-package config
+package basicConfig
 
 import (
 	"fmt"
@@ -7,19 +7,20 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ruandao/distribute-im-pkg/lib"
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
+
 	"github.com/spf13/viper"
 )
 
 type BConfig struct {
-	BusinessName     string   `mapstructure:"business_name"`
-	Role 						 string   `mapstructure:"role"`
-	Version          string   `mapstructure:"version"`
-	ShareName 	     string   `mapstructure:"share_name"`
-	IP               string   `mapstructure:"ip"`
-	Port             string   `mapstructure:"port"`
-	EtcdAddrs 			 string 	`mapstructure:"etcd_addrs"`
-	Lease            int64    `mapstructure:"lease_time_seconds"`
+	BusinessName string `mapstructure:"business_name"`
+	Role         string `mapstructure:"role"`
+	Version      string `mapstructure:"version"`
+	ShareName    string `mapstructure:"share_name"` // 标明这个应用配置是服务于哪个数据集的
+	IP           string `mapstructure:"ip"`
+	Port         string `mapstructure:"port"`
+	EtcdAddrs    string `mapstructure:"etcd_addrs"`
+	Lease        int64  `mapstructure:"lease_time_seconds"`
 }
 
 func (bConfig BConfig) AppConfPath() string {
@@ -37,10 +38,10 @@ func (bConf BConfig) LoadAppId() string {
 	return fmt.Sprintf("%v-%v", bConf.BusinessName, bConf.Version)
 }
 
-func LoadBasicConfig() (BConfig, error) {
-	config := BConfig{}
+func LoadBasicConfig() (*BConfig, error) {
+
 	if !fileExists("must.env") {
-		return config, lib.NewXError(fmt.Errorf(""), "must.env missed")
+		return nil, xerr.NewXError(fmt.Errorf(""), "must.env missed")
 	}
 
 	viper.SetConfigName("config")
@@ -48,7 +49,7 @@ func LoadBasicConfig() (BConfig, error) {
 	viper.AddConfigPath(".")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return config, lib.NewXError(err, "load config.yaml fail")
+		return nil, xerr.NewXError(err, "load config.yaml fail")
 	}
 
 	// 优先使用环境变量（需设置环境变量前缀）
@@ -74,14 +75,14 @@ func LoadBasicConfig() (BConfig, error) {
 		}
 	}
 	fmt.Println("===================")
-	
-	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend); 
-	if err !=nil {
-		return  config, lib.NewXError(err, "must.env missed")
+
+	fd, err := os.OpenFile("must.env", os.O_RDONLY, os.ModeAppend)
+	if err != nil {
+		return nil, xerr.NewXError(err, "must.env missed")
 	}
 	content, err := io.ReadAll(fd)
 	if err != nil {
-		return  config, lib.NewXError(err, "must.env read err")
+		return nil, xerr.NewXError(err, "must.env read err")
 	}
 	lines := strings.Split(string(content), "\n")
 	problemEnvs := []string{}
@@ -91,7 +92,7 @@ func LoadBasicConfig() (BConfig, error) {
 		if key != "" {
 			val := viper.GetString(key)
 			if val == "" {
-				problemEnvs = append(problemEnvs, "APP_" + key)
+				problemEnvs = append(problemEnvs, "APP_"+key)
 			}
 		}
 	}
@@ -100,9 +101,9 @@ func LoadBasicConfig() (BConfig, error) {
 		os.Exit(1)
 	}
 
-
-	if err := viper.Unmarshal(&config); err != nil {
-		return config, lib.NewXError(err, "config.yaml parse fail....")
+	config := &BConfig{}
+	if err := viper.Unmarshal(config); err != nil {
+		return nil, xerr.NewXError(err, "config.yaml parse fail....")
 	}
 
 	return config, nil

@@ -50,6 +50,10 @@ func Errorf(format string, others ...any) {
 	fmt.Printf(format, others...)
 	// logger.Error(fmt.Sprintf(format, others...))
 }
+func Error(msg string, others ...any) {
+	Errorf(msg, others...)
+	// logger.Error(fmt.Sprintf(format, others...))
+}
 
 func Fatal(err error) {
 	fmt.Printf("%v", err)

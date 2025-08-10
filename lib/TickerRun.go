@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TickerRun(ctx context.Context, ticker *time.Ticker, f func()) (context.Context, context.CancelFunc) {
+func TickerRun(ctx context.Context, ticker *time.Ticker, ticketF func()) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		for {
@@ -13,7 +13,7 @@ func TickerRun(ctx context.Context, ticker *time.Ticker, f func()) (context.Cont
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				f()
+				ticketF()
 			}
 		}
 	}()

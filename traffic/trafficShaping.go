@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ruandao/distribute-im-pkg/lib"
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -45,9 +45,9 @@ func GetRPCClient(ctx context.Context, businessNode string) (*grpc.ClientConn, e
 		dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
 		conn, err := grpc.NewClient(endPoint, dialOption)
 		if err != nil {
-			return nil, lib.NewXError(err, fmt.Sprintf("get client for %v fail: %v", endPoint, err))
+			return nil, xerr.NewXError(err, fmt.Sprintf("get client for %v fail: %v", endPoint, err))
 		}
 		return conn, nil
 	}
-	return nil, lib.NewXError(fmt.Errorf("not endpoint found for %v of %v node", businessNode, reqTag), "")
+	return nil, xerr.NewXError(fmt.Errorf("not endpoint found for %v of %v node", businessNode, reqTag), "")
 }
