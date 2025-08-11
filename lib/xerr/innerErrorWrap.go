@@ -2,6 +2,7 @@ package xerr
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -30,7 +31,11 @@ func (xerr *Error) String() string {
 	return fmt.Sprintf("%+v", xerr.e)
 }
 
-func NewXError(err error, msg string) error {
+func NewXError(err error, msgArr ...string) error {
+	msg := ""
+	if len(msgArr) > 0 {
+		msg = strings.Join(msgArr, "\n")
+	}
 	xerr, ok := err.(zError)
 	if !ok {
 		// new XError

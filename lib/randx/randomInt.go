@@ -16,5 +16,5 @@ func RandomInt(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	return _rand.Intn(n + 1)
+	return _rand.Intn(n)
 }

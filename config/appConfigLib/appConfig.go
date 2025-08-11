@@ -6,12 +6,14 @@ import (
 	"hash/crc32"
 	"sort"
 
+	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	"github.com/ruandao/distribute-im-pkg/xetcd"
 
 	"github.com/ruandao/distribute-im-pkg/config/basicConfig"
-	"github.com/ruandao/distribute-im-pkg/traffic"
 
 	"github.com/ruandao/distribute-im-pkg/lib"
+
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 )
 
 type FlyConfig struct {
@@ -36,24 +38,27 @@ func (appConf *AppConfig) Watch() {
 	}
 
 	flyConfigWatch := &FlyConfigWatch{}
-	flyConfigWatch.keyWatchRemove = appConf.XContent.KeyWatch(appConf.ConfigKeyPrefix(), func(s *string) {
-
-		if s == nil {
+	parseFlyConfig := func(s string, err error) {
+		if err != nil {
+			logx.Errorf("%v", xerr.NewXError(err, fmt.Sprintf("can't get flyConfig for %v ", appConf.ConfigKeyPrefix())))
 			flyConfigWatch.flyConfig = nil
 		} else {
 			flyConfig := &FlyConfig{}
-			lib.ReadFromJSON([]byte(*s), flyConfig)
+			err = lib.ReadFromJSON([]byte(s), flyConfig)
+			if err != nil {
+				logx.Errorf("%v", xerr.NewXError(err, fmt.Sprintf("can't parse flyConfig for %v of val: %v", appConf.ConfigKeyPrefix(), s)))
+			}
 			flyConfigWatch.flyConfig = flyConfig
 		}
-	})
-	val := appConf.XContent.Get(appConfig.ConfigKeyPrefix())
-	if val != nil {
-		flyConfig := &FlyConfig{}
-		lib.ReadFromJSON([]byte(*val), flyConfig)
-		flyConfigWatch.flyConfig = flyConfig
 	}
-	appConf.flyConfigWatch = flyConfigWatch
+	
+	flyConfigWatch.keyWatchRemove = appConf.XContent.KeyWatch(appConf.ConfigKeyPrefix(), func(s string, err error) {
+		parseFlyConfig(s, err)
+	})
+	val, err := appConf.XContent.Get(appConf.ConfigKeyPrefix())
+	parseFlyConfig(val, err)
 
+	appConf.flyConfigWatch = flyConfigWatch
 }
 
 func (appConf *AppConfig) Close() {
@@ -70,37 +75,44 @@ func (appConf *AppConfig) GetTrafficTags() []string {
 	return nil
 }
 
-func (appConf *AppConfig) SplitIdToSeparateShare(ctx context.Context, bizName string, shareIdList []string) map[string][]string {
-	shares := appConf.GetShares(ctx, bizName)
-	m := make(map[string][]string)
+func (appConf *AppConfig) SplitIdToSeparateShare(ctx context.Context, bizName string, shareIdList []string) (map[xetcd.ShareName][]string, error) {
+	shares, err := appConf.GetShares(ctx, bizName)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[xetcd.ShareName][]string)
 	for _, shareId := range shareIdList {
 		shareKey := ShareKeyFromId(shares, shareId)
 		shareIdListPiece := m[shareKey]
 		shareIdListPiece = append(shareIdListPiece, shareId)
 		m[shareKey] = shareIdListPiece
 	}
-	return m
+	return m, nil
 }
 
-func (appConf *AppConfig) GetShares(ctx context.Context, bizName string) []string {
-	var shares []string
-	routeTag := traffic.GetRouteTag(ctx)
+func (appConf *AppConfig) GetShares(ctx context.Context, bizName string) ([]xetcd.ShareName, error) {
+	routeShareConns, err := appConf.XContent.GetDepServicesCluster(bizName)
+	if err != nil {
+		return nil, err
+	}
 
-	routeShareConns := appConf.XContent.GetDepServicesCluster(bizName)
-	routeTag = routeShareConns.GetEffectTag(routeTag)
-	for shareKey := range routeShareConns.M[routeTag] {
+	var shares []xetcd.ShareName
+	for shareKey := range routeShareConns.M {
 		shares = append(shares, shareKey)
 	}
 
-	return shares
+	return shares, nil
 }
 
-func (appConf *AppConfig) GetShareKeyFromId(ctx context.Context, bizName string, shareId string) string {
-	shares := appConf.GetShares(ctx, bizName)
-	return ShareKeyFromId(shares, shareId)
+func (appConf *AppConfig) GetShareKeyFromId(ctx context.Context, bizName string, shareId string) (xetcd.ShareName, error) {
+	shares, err := appConf.GetShares(ctx, bizName)
+	if err != nil {
+		return "", err
+	}
+	return ShareKeyFromId(shares, shareId), nil
 }
 
-func ShareKeyFromId(shares []string, shareId string) string {
+func ShareKeyFromId(shares []xetcd.ShareName, shareId string) xetcd.ShareName {
 	if len(shares) == 0 {
 		return ""
 	}
@@ -108,7 +120,7 @@ func ShareKeyFromId(shares []string, shareId string) string {
 	// 创建虚拟节点来提高哈希分布的均匀性
 	type Node struct {
 		Hash  uint32
-		Share string
+		Share xetcd.ShareName
 	}
 
 	var hashRing []Node
@@ -143,37 +155,41 @@ func ShareKeyFromId(shares []string, shareId string) string {
 
 // 获取应用自身配置的键
 func (appConf *AppConfig) ConfigKeyPrefix() string {
-	configPath := fmt.Sprintf("/appConfig/%v/%v/%v/%v/config", appConf.BConfig.BusinessName, appConf.BConfig.Role, appConf.BConfig.Version, appConf.BConfig.ShareName)
+	configPath := fmt.Sprintf("/appConfig/%v/%v/%v/%v/config", appConf.BConfig.BusinessName, appConf.BConfig.Role, appConf.BConfig.ShareName, appConf.BConfig.Version)
 	return configPath
 }
 
 // 生成存放应用状态的键
 func (appConf *AppConfig) StateKeys() []string {
-	// /appState/auth/mysql/default/db0/127.0.0.1:3306/state
-	// `keyPrefix`/`routeTag`/`shareName`/`instanceIPPort`/state
+	// /appState/auth/mysql/db0/default/127.0.0.1:3306/state
+	// `keyPrefix`/`shareName`/`routeTag`/`instanceIPPort`/state
 	keys := []string{}
 	for _, routeTag := range appConf.GetTrafficTags() {
 		configPath := fmt.Sprintf("/appState/%v/%v/%v/%v/%v/state",
 			appConf.BConfig.BusinessName,
 			appConf.BConfig.Role,
-			routeTag,
 			appConf.BConfig.ShareName,
-			appConf.BConfig.ListenAddr(),
+			routeTag,
+			appConf.BConfig.RegisterAddr(),
 		)
 		keys = append(keys, configPath)
 	}
 	return keys
 }
 
-var appConfig *AppConfig
+var _appConfig *AppConfig
 
 func NewAppConfig(basicConfig *basicConfig.BConfig, xContent *xetcd.XContent) *AppConfig {
-	return &AppConfig{BConfig: basicConfig, XContent: xContent, flyConfigWatch: nil}
-}
-func RegisterAppConfig(basicConfig *basicConfig.BConfig, xContent *xetcd.XContent) {
-	appConfig = NewAppConfig(basicConfig, xContent)
+	appConfig := &AppConfig{BConfig: basicConfig, XContent: xContent, flyConfigWatch: nil}
 	appConfig.Watch()
+	return appConfig
+}
+func RegisterAppConfig(appConfig *AppConfig) {
+	_appConfig = appConfig
 }
 func GetAppConfig() *AppConfig {
-	return appConfig
+	if _appConfig == nil {
+		panic("plase do RegisterAppConfig first")
+	}
+	return _appConfig
 }

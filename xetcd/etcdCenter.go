@@ -31,7 +31,7 @@ type XMap struct {
 	sync.Map
 }
 
-func (xMap *XMap)Keys() []string {
+func (xMap *XMap) Keys() []string {
 	var keys []string
 	xMap.Range(func(key, value any) bool {
 		keys = append(keys, key.(string))
@@ -87,8 +87,9 @@ func (content *XContent) connect(ctx context.Context) error {
 					case etcdLib.EventTypeDelete:
 						key := string(event.Kv.Key)
 						content.c.Delete(key)
+						afterDelVal, ok := content.c.Load(key)
 						notifyList = append(notifyList, key)
-						logx.Info(fmt.Sprintf("delete key: %v", key))
+						logx.Info(fmt.Sprintf("delete key: %v afterDelVal: %v ok: %v", key, afterDelVal, ok))
 					}
 				}
 
@@ -105,20 +106,26 @@ func (content *XContent) connect(ctx context.Context) error {
 				})
 
 				for _, key := range clusterNotifyList {
-					_updateList, _ := content.clusterWatchMap.Load(key)
+					_updateList, ok := content.clusterWatchMap.Load(key)
+					if !ok {
+						_updateList = nil
+					}
 					updateList := _updateList.([]*ClusterItem)
-					cluster := content.GetDepServicesCluster(key)
+					cluster, err := content.GetDepServicesCluster(key)
 					for _, updateItem := range updateList {
-						updateItem.changeFunc(cluster)
+						updateItem.changeFunc(cluster, err)
 					}
 				}
 
 				for _, key := range kvNotifyList {
-					_updateList, _ := content.clusterWatchMap.Load(key)
+					_updateList, ok := content.clusterWatchMap.Load(key)
+					if !ok {
+						_updateList = nil
+					}
 					updateList := _updateList.([]*KVItem)
-					retV := content.Get(key)
+					retV, err := content.Get(key)
 					for _, updateItem := range updateList {
-						updateItem.changeFunc(retV)
+						updateItem.changeFunc(retV, err)
 					}
 				}
 
@@ -140,15 +147,16 @@ func (content *XContent) Range(fn func(key string, value string) bool) {
 		return ret
 	})
 }
-func (content *XContent) Get(key string) (*string) {
+func (content *XContent) Get(key string) (retV string, err error) {
 	ret, found := content.c.Load(key)
-	if !found {
-		return nil
+	retV = ""
+	if found {
+		retV = ret.(string)
+		return retV, nil
 	}
-	retV := ret.(string)
-	return &retV
+	return retV, xerr.NewXError(fmt.Errorf("couldn't found content on %v", key))
 }
-func (content *XContent) PutLease(ctx context.Context, key string, val string, seconds int64) (error) {
+func (content *XContent) PutLease(ctx context.Context, key string, val string, seconds int64) error {
 	leaseResp, err := content.cli.Grant(ctx, seconds)
 	if err != nil {
 		xerr := xerr.NewXError(err, "Get Grant Fail")
@@ -164,7 +172,6 @@ func (content *XContent) PutLease(ctx context.Context, key string, val string, s
 
 	return nil
 }
-
 
 func (content *XContent) GetSelfConfigX(bConfig bConfLib.BConfig) (string, bool) {
 	return content.GetSelfConfig(bConfig.BusinessName, bConfig.Role, bConfig.Version, bConfig.ShareName)
@@ -187,36 +194,36 @@ func (content *XContent) GetSelfConfig(bizName string, role string, version stri
 }
 
 // RouteTag: ShareInstance: []DBConfig
-func (content *XContent) GetDepServicesCluster(keyPrefix string) *RouteShareConns {
-	routeMap := make(map[string]map[string]*ShareConfig)
+func (content *XContent) GetDepServicesCluster(keyPrefix string) (*RouteShareConns, error) {
+	routeMap := make(map[ShareName]map[RouteTag]*ShareConfig)
 	found := false
 	content.Range(func(key string, value string) bool {
 		if strings.HasPrefix(key, keyPrefix) {
 			// key
-			// /appState/auth/mysql/default/db0/127.0.0.1:3306/state
-			// `keyPrefix`/`routeTag`/`shareName`/`instanceIPPort`/state
+			// /appState/auth/mysql/db0/default/127.0.0.1:3306/state
+			// `keyPrefix`/`shareName`/`routeTag`/`instanceIPPort`/state
 			keyWithoutPrefix, _ := strings.CutPrefix(key, keyPrefix)
 			// keyWithoutPrefix
-			// /default/db0/127.0.0.1:3306/state
+			// /db0/default/127.0.0.1:3306/state
 			pieces := strings.Split(keyWithoutPrefix, "/")
-			tag, instance := pieces[1], pieces[2]
+			shareKey, tag  := ShareName(pieces[1]), RouteTag(pieces[2])
 
 			// fmt.Printf("tag: %v instance: %v dbConfig: %v err: %v\n", tag, instance, dbConfig, err)
 			found = true
-			instanceMap := routeMap[tag]
-			if instanceMap == nil {
-				instanceMap = make(map[string]*ShareConfig)
+			shareMap := routeMap[shareKey]
+			if shareMap == nil {
+				shareMap = make(map[RouteTag]*ShareConfig)
 			}
 			defer func() {
 				// fmt.Printf("routeMap: %v\n", routeMap)
-				routeMap[tag] = instanceMap
+				routeMap[shareKey] = shareMap
 			}()
 
-			instanceOnSpecficShare := instanceMap[instance]
+			instanceOnSpecficShare := shareMap[tag]
 			if instanceOnSpecficShare == nil {
 				instanceOnSpecficShare = &ShareConfig{
 					RouteTag:      tag,
-					ShareInstance: instance,
+					ShareInstance: shareKey,
 					ConnConfig:    nil,
 				}
 			}
@@ -225,7 +232,7 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) *RouteShareConn
 				// fmt.Printf("instance: %v\n", instance)
 				// fmt.Printf("instanceOnSpecficShare: %v\n", instanceOnSpecficShare)
 				// fmt.Printf("pieces: %v tag: %v instance: %v\n", pieces, tag, instance)
-				instanceMap[instance] = instanceOnSpecficShare
+				shareMap[tag] = instanceOnSpecficShare
 			}()
 
 			instanceOnSpecficShare.ConnConfig = append(instanceOnSpecficShare.ConnConfig, value)
@@ -234,23 +241,26 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) *RouteShareConn
 	})
 	// fmt.Printf("getShareDBConfig keyPrefix: %v value: %v\n", keyPrefix, routeMap)
 	if !found {
-		return nil
+		return nil, xerr.NewXError(fmt.Errorf("couldn't found route config on %v", keyPrefix))
 	}
-	cluster := RouteShareConns{M: routeMap}
-	return &cluster
+	cluster := NewRouteShareConns(routeMap)
+	return &cluster, nil
 }
 
 // if routeTag no match, it will downgrade to "default"
 // if shareInstance no match, it will return nil
-func (content *XContent) GetDepServicesShareDBInstancesConfig(keyPrefix string, routeTag string, shareInstance string) *ShareConfig {
-	shareCluster := content.GetDepServicesCluster(keyPrefix)
-	return shareCluster.Get(routeTag, shareInstance)
+func (content *XContent) GetDepServicesShareDBInstancesConfig(keyPrefix string, shareKey ShareName, routeTag RouteTag) (*ShareConfig, error) {
+	shareCluster, err := content.GetDepServicesCluster(keyPrefix)
+	if err != nil {
+		return nil, err
+	}
+	return shareCluster.Get(shareKey, routeTag)
 }
 
-func (content *XContent)KeyWatch(key string, changeFunc KVChangeCB) func() {
+func (content *XContent) KeyWatch(key string, changeFunc KVChangeCB) func() {
 	cnt := 10
 	for cnt > 0 {
-		cnt --
+		cnt--
 		wItem := &KVItem{key: key, changeFunc: changeFunc}
 		removeF := func() {
 			content.KeyWatchRemove(wItem)
@@ -278,7 +288,7 @@ func (content *XContent)KeyWatch(key string, changeFunc KVChangeCB) func() {
 func (content *XContent) KeyWatchRemove(wItem *KVItem) {
 	logx.Infof("KeyWatchRemove %v\n", wItem)
 	cnt := 10
-	for cnt >0{
+	for cnt > 0 {
 		cnt--
 		pre, _ := content.keyWatchMap.Load(wItem.key)
 		logx.Infof("KeyWatchRemove key: %v pre: %v wItem: %v\n", wItem.key, pre, wItem)
@@ -306,12 +316,12 @@ func (content *XContent) KeyWatchRemove(wItem *KVItem) {
 
 func (content *XContent) ClusterWatch(keyPrefix string, changeFunc ClusterChangeCB) func() {
 	cnt := 10
-	for cnt >0 {
+	for cnt > 0 {
 		cnt--
 		wItem := &ClusterItem{keyPrefix: keyPrefix, changeFunc: changeFunc}
 		removeF := func() {
-				content.ClusterWatchRemove(wItem)
-			}
+			content.ClusterWatchRemove(wItem)
+		}
 		pre, loaded := content.clusterWatchMap.LoadOrStore(keyPrefix, []*ClusterItem{wItem})
 		if !loaded {
 			return removeF
@@ -356,7 +366,7 @@ func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
 	}
 }
 
-func New( bConfig *bConfLib.BConfig) (*XContent, error) {
+func New(bConfig *bConfLib.BConfig) (*XContent, error) {
 	ctx := context.Background()
 	content := &XContent{Endpoints: strings.Split(bConfig.EtcdAddrs, ",")}
 	logx.Infof("etcd connect start\n")

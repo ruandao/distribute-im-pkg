@@ -2,9 +2,15 @@ package rdb
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
+	"github.com/ruandao/distribute-im-pkg/lib/logx"
+	"github.com/ruandao/distribute-im-pkg/traffic"
+	"github.com/ruandao/distribute-im-pkg/xetcd"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -12,16 +18,98 @@ import (
 // RedisImpl 实现 IRedis 接口
 type RedisImpl struct {
 	// 可以保留一些必要的字段
-	bizName string
+	bizName         string
+	xContent        *xetcd.XContent
+	_cluster        *xetcd.RouteShareConns
+	watchRemoveFunc func()
+	appConfig       *appConfigLib.AppConfig
 }
 
 // NewRedisImpl 创建一个新的 Redis 实现实例
-func NewRedisImpl(bizName string) *RedisImpl {
+func NewRedisImpl(bizName string, xContent *xetcd.XContent, appConfig *appConfigLib.AppConfig) *RedisImpl {
 	redisImpl := &RedisImpl{
-		bizName: bizName,
+		bizName:   bizName,
+		xContent:  xContent,
+		appConfig: appConfig,
+	}
+	redisImpl.Watch()
+	return redisImpl
+}
+
+func (r *RedisImpl) Watch() {
+	ctx := context.Background()
+	var cb xetcd.ClusterChangeCB = func(cluster *xetcd.RouteShareConns, err error) {
+		if err != nil {
+			logx.Errorf("redis biz route %v not found, err: %v", r.bizName, err)
+			r._cluster = nil
+			return
+		}
+		for _, shareClusters := range cluster.M {
+			for _, shareConns := range shareClusters {
+				for _, conn := range shareConns.ConnConfig {
+					redisC := &RedisConfig{}
+					err := json.Unmarshal([]byte(conn), redisC)
+					if err != nil {
+						logx.Errorf("redis config unmarshal failed: %v", err)
+						return
+					}
+					if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
+						logx.Errorf("ping test to redis instance failed: %v", redisC)
+						return
+					}
+				}
+			}
+		}
+
+		r._cluster = cluster
+	}
+	r.watchRemoveFunc = r.xContent.ClusterWatch(r.bizName, cb)
+}
+
+func (r *RedisImpl) Close() {
+	if r.watchRemoveFunc != nil {
+		r.watchRemoveFunc()
+		r.watchRemoveFunc = nil
+	}
+}
+
+func (r *RedisImpl) getRedisC(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string) (*RedisConfig, error) {
+	shareKey, err := r.appConfig.GetShareKeyFromId(ctx, bizName, key)
+	if err != nil {
+		return nil, err
+	}
+	instanceC, err := r._cluster.Get(shareKey, routeTag)
+	if err != nil {
+		return nil, err
+	}
+	redisC := &RedisConfig{}
+	json.Unmarshal([]byte(instanceC.ConnConfig[0]), redisC)
+	return redisC, nil
+}
+
+func (r *RedisImpl) GetRedisClient(ctx context.Context, bizName string, key string) (*redis.Client, error) {
+	routeTag := traffic.GetRouteTag(ctx)
+	return r._GetRedisClient(ctx, bizName, routeTag, key, nil)
+}
+
+func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string, _redisC *RedisConfig) (rCli *redis.Client, err error) {
+	// 创建Redis客户端
+	// in default, the _redisC will be nil
+	redisC := _redisC
+	if redisC == nil {
+		redisC, err = r.getRedisC(ctx, bizName, routeTag, key)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return redisImpl
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisC.Addr,
+		Password: redisC.Password,
+		DB:       redisC.DB,
+		PoolSize: redisC.PoolSize,
+	})
+	return rdb, nil
 }
 
 // getRedisClientByKey 根据 key 动态选择 Redis 实例
@@ -31,7 +119,10 @@ func (r *RedisImpl) getRedisClientByKey(ctx context.Context, key string) (*redis
 	}
 
 	// 直接调用同包中的 GetRedisClient 函数
-	client := GetRedisClient(ctx, r.bizName, key)
+	client, err := r.GetRedisClient(ctx, r.bizName, key)
+	if err != nil {
+		return nil, err
+	}
 
 	if client == nil {
 		return nil, errors.New("获取 Redis 客户端失败")
@@ -65,13 +156,13 @@ func (r *RedisImpl) Get(ctx context.Context, key string) (string, error) {
 }
 
 // HMSet 设置哈希表值
-func (r *RedisImpl) HMSet(ctx context.Context, key string, values map[string]interface{}) error {
+func (r *RedisImpl) HMSet(ctx context.Context, key string, values ...interface{}) error {
 	client, err := r.getRedisClientByKey(ctx, key)
 	if err != nil {
 		return err
 	}
 
-	return client.HMSet(ctx, key, values).Err()
+	return client.HMSet(ctx, key, values...).Err()
 }
 
 // HMGet 获取哈希表值
@@ -143,4 +234,14 @@ func (r *RedisImpl) ZRangeByScore(ctx context.Context, key string, opt *redis.ZR
 	}
 
 	return client.ZRangeByScore(ctx, key, opt).Result()
+}
+
+// ZAdd 向有序集合中添加成员
+func (r *RedisImpl) ZAdd(ctx context.Context, key string, members ...*redis.Z) (int64, error) {
+	client, err := r.getRedisClientByKey(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+
+	return client.ZAdd(ctx, key, members...).Result()
 }

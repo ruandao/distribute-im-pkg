@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
