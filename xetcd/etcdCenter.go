@@ -106,25 +106,23 @@ func (content *XContent) connect(ctx context.Context) error {
 				})
 
 				for _, key := range clusterNotifyList {
-					_updateList, ok := content.clusterWatchMap.Load(key)
-					if !ok {
-						_updateList = nil
+					_updateList, _ := content.clusterWatchMap.Load(key)
+					if _updateList == nil {
+						continue
 					}
-					updateList := _updateList.([]*ClusterItem)
 					cluster, err := content.GetDepServicesCluster(key)
-					for _, updateItem := range updateList {
+					for _, updateItem := range _updateList.([]*ClusterItem) {
 						updateItem.changeFunc(cluster, err)
 					}
 				}
 
 				for _, key := range kvNotifyList {
-					_updateList, ok := content.clusterWatchMap.Load(key)
-					if !ok {
-						_updateList = nil
+					_updateList, _ := content.clusterWatchMap.Load(key)
+					if _updateList == nil {
+						continue
 					}
-					updateList := _updateList.([]*KVItem)
 					retV, err := content.Get(key)
-					for _, updateItem := range updateList {
+					for _, updateItem := range _updateList.([]*KVItem) {
 						updateItem.changeFunc(retV, err)
 					}
 				}
@@ -367,14 +365,17 @@ func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
 }
 
 func New(bConfig *bConfLib.BConfig) (*XContent, error) {
-	ctx := context.Background()
+	ctx,cancel := context.WithTimeout(context.Background(), time.Second)
+	defer func() {
+		cancel()
+	}()
 	content := &XContent{Endpoints: strings.Split(bConfig.EtcdAddrs, ",")}
 	logx.Infof("etcd connect start\n")
 	logx.Infof("etcd connect endpoints: %v\n", strings.Split(bConfig.EtcdAddrs, ","))
 	err := content.connect(ctx)
-	logx.Infof("etcd connect done, err: %v \n", err)
 	if err != nil {
 		return nil, err
 	}
+	logx.Infof("etcd connect done \n")
 	return content, nil
 }

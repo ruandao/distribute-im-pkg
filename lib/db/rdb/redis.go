@@ -26,6 +26,10 @@ type IRedis interface {
 	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) ([]string, error)
 	// 向有序集合中添加成员
 	ZAdd(ctx context.Context, key string, members ...*redis.Z) (int64, error)
+	// 只有当键不存在时才设置键值
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	// 重命名键
+	Rename(ctx context.Context, oldKey string, newKey string) error
 	// 选择Redis实例的核心方法
 	getRedisClientByKey(ctx context.Context, key string) (*redis.Client, error)
 }

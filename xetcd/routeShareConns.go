@@ -37,7 +37,7 @@ func (shareCluster *RouteShareConns)GetEffectTag(shareKey ShareName, routeTag Ro
 
 func (shareCluster *RouteShareConns) Get(shareKey ShareName, routeTag RouteTag) (shareConfig *ShareConfig, err error) {
 	if shareCluster == nil {
-		return nil, xerr.NewXError(fmt.Errorf("shareCluster shouldn't be nil"))
+		return nil, xerr.NewXError(fmt.Errorf("shareCluster for shareKey: %v routeTag: %v shouldn't be nil", shareKey, routeTag))
 	}
 	
 	routeTag = shareCluster.GetEffectTag(shareKey, routeTag)

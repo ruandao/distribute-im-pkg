@@ -3,12 +3,14 @@ package rdb
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
+	"github.com/ruandao/distribute-im-pkg/lib/randx"
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 	"github.com/ruandao/distribute-im-pkg/traffic"
 	"github.com/ruandao/distribute-im-pkg/xetcd"
 
@@ -50,7 +52,7 @@ func (r *RedisImpl) Watch() {
 					redisC := &RedisConfig{}
 					err := json.Unmarshal([]byte(conn), redisC)
 					if err != nil {
-						logx.Errorf("redis config unmarshal failed: %v", err)
+						logx.Errorf("redis config unmarshal failed val: #%v# err: %v", conn, err)
 						return
 					}
 					if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
@@ -61,13 +63,24 @@ func (r *RedisImpl) Watch() {
 			}
 		}
 
+		if cluster == nil {
+			logx.Errorf("redis biz route %v not found, err: %v", r.bizName, err)
+		}
 		r._cluster = cluster
 	}
 	r.watchRemoveFunc = r.xContent.ClusterWatch(r.bizName, cb)
+	conns, err := r.xContent.GetDepServicesCluster(r.bizName)
+	cb(conns, err)
+	err = r.Set(ctx, "helloTest", "success", time.Hour)
+	if err != nil {
+		logx.Errorf("redis set %v with val: %v fail with err: %v", "helloTest", "success", err)
+		return
+	}
 }
 
 func (r *RedisImpl) Close() {
 	if r.watchRemoveFunc != nil {
+		logx.Errorf("call RedisImpl close")
 		r.watchRemoveFunc()
 		r.watchRemoveFunc = nil
 	}
@@ -82,8 +95,13 @@ func (r *RedisImpl) getRedisC(ctx context.Context, bizName string, routeTag xetc
 	if err != nil {
 		return nil, err
 	}
+
+	connStr := randx.SelectOne(instanceC.ConnConfig)
 	redisC := &RedisConfig{}
-	json.Unmarshal([]byte(instanceC.ConnConfig[0]), redisC)
+	err = json.Unmarshal([]byte(connStr), redisC)
+	if err != nil {
+		return nil, xerr.NewXError(err, fmt.Sprintf("redis config parse failed val: #%v#", connStr))
+	}
 	return redisC, nil
 }
 
@@ -92,6 +110,8 @@ func (r *RedisImpl) GetRedisClient(ctx context.Context, bizName string, key stri
 	return r._GetRedisClient(ctx, bizName, routeTag, key, nil)
 }
 
+var dbMap sync.Map
+var dbMapLocker sync.Mutex
 func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string, _redisC *RedisConfig) (rCli *redis.Client, err error) {
 	// 创建Redis客户端
 	// in default, the _redisC will be nil
@@ -103,19 +123,33 @@ func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTa
 		}
 	}
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisC.Addr,
-		Password: redisC.Password,
-		DB:       redisC.DB,
-		PoolSize: redisC.PoolSize,
-	})
-	return rdb, nil
+	connStr := redisC.getDSN()
+	val, ok := dbMap.Load(connStr)
+	if !ok {
+		dbMapLocker.Lock()
+		defer dbMapLocker.Unlock()
+		val, ok = dbMap.Load(connStr)
+		if ok {
+			return val.(*redis.Client), nil
+		}
+		rdb := redis.NewClient(&redis.Options{
+			Addr:     redisC.Addr,
+			Password: redisC.Password,
+			DB:       redisC.DB,
+			PoolSize: redisC.PoolSize,
+		})
+		dbMap.Store(connStr, rdb)
+		return rdb, nil
+
+	}
+	
+	return val.(*redis.Client), nil
 }
 
 // getRedisClientByKey 根据 key 动态选择 Redis 实例
 func (r *RedisImpl) getRedisClientByKey(ctx context.Context, key string) (*redis.Client, error) {
 	if len(key) == 0 {
-		return nil, errors.New("key 不能为空")
+		return nil, xerr.NewXError(fmt.Errorf("key 不能为空"))
 	}
 
 	// 直接调用同包中的 GetRedisClient 函数
@@ -125,7 +159,7 @@ func (r *RedisImpl) getRedisClientByKey(ctx context.Context, key string) (*redis
 	}
 
 	if client == nil {
-		return nil, errors.New("获取 Redis 客户端失败")
+		return nil, xerr.NewXError(fmt.Errorf("获取 Redis 客户端失败"))
 	}
 
 	return client, nil
@@ -139,10 +173,36 @@ func (r *RedisImpl) Set(ctx context.Context, key string, value interface{}, expi
 	}
 
 	if expiration > 0 {
-		return client.Set(ctx, key, value, time.Duration(expiration)*time.Second).Err()
+		return client.Set(ctx, key, value, expiration).Err()
 	} else {
 		return client.Set(ctx, key, value, 0).Err()
 	}
+}
+
+// SetNX 只有当键不存在时才设置键值
+func (r *RedisImpl) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	client, err := r.getRedisClientByKey(ctx, key)
+	if err != nil {
+		return false, err
+	}
+
+	if expiration > 0 {
+		return client.SetNX(ctx, key, value, expiration).Result()
+	} else {
+		return client.SetNX(ctx, key, value, 0).Result()
+	}
+}
+
+// Rename 重命名键
+func (r *RedisImpl) Rename(ctx context.Context, oldKey string, newKey string) error {
+	// 使用旧键获取Redis客户端
+	client, err := r.getRedisClientByKey(ctx, oldKey)
+	if err != nil {
+		return err
+	}
+
+	// 执行重命名操作
+	return client.Rename(ctx, oldKey, newKey).Err()
 }
 
 // Get 获取键值
@@ -220,10 +280,17 @@ func (r *RedisImpl) Exists(ctx context.Context, key string) (bool, error) {
 func (r *RedisImpl) Expire(ctx context.Context, key string, expiration time.Duration) error {
 	client, err := r.getRedisClientByKey(ctx, key)
 	if err != nil {
-		return err
+		return xerr.NewXError(err, "get redis client failed")
 	}
-
-	return client.Expire(ctx, key, time.Duration(expiration)*time.Second).Err()
+	cmd := client.Set(ctx, "updateKeyExpire" + key, expiration, time.Hour)
+	if cmd.Err() != nil {
+		logx.Errorf("updateKeyExpire err: %v", cmd.Err())
+	}
+	err = client.Expire(ctx, key, expiration).Err()
+	if err != nil {
+		return xerr.NewXError(err, fmt.Sprintf("setup Expire %v for key: %v failed, client: %v", expiration, key, client))
+	}
+	return nil
 }
 
 // ZRangeByScore 获取有序集合中指定分数范围内的成员

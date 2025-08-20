@@ -16,12 +16,19 @@ type RedisConfig struct {
 	PoolSize int    // 连接池大小
 }
 
+func (redisC *RedisConfig)getDSN() string {
+	return fmt.Sprintf("%v:%v:%v:%v", redisC.Addr, redisC.Password, redisC.DB, redisC.PoolSize)
+}
+
 var _redisImpl IRedis
 
 func RegisterRedisC(redisImpl IRedis) {
 	_redisImpl = redisImpl
 }
 func GetRedisC() IRedis {
+	if _redisImpl == nil {
+		panic("_redisImpl shouldn't be nil")
+	}
 	return _redisImpl
 }
 

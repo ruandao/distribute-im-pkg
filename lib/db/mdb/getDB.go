@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
 
@@ -40,8 +41,9 @@ func DBConfigFrom(val string) (*DBConfig, error) {
 	return dbConfig, nil
 }
 
-type ITableName interface {
+type IShareModel interface {
 	TableName() string
+	ShareId() string
 }
 
 // GetDB 时,需要确认连接哪一个业务的哪个分片(通过业务ID),需要传入的信息有:业务名,业务ID
@@ -50,13 +52,13 @@ type ITableName interface {
 // mysql 的查询语句,很容易出现复杂的情况,难以隔离具体的业务意图直接在中间层提前计算出分片信息, 譬如 where ... in 语句,对应的字段是否是分片字段(同一个库中有多个表), 这个并不确定
 // 所以我们并不直接屏蔽分片的感知,而是让调用方提前思考好具体分片依赖的信息,然后据此来获取实例的连接信息
 // 路由标签,是一个动态信息,一般而言,调用方并不直接决定,so 通过一个context 传入即可
-func GetDB(ctx context.Context, bizName string, shareId string, model ITableName) (*gorm.DB, error) {
+func GetDB(ctx context.Context, bizName string, model IShareModel) (*gorm.DB, error) {
 	// we should calculate shareKey from shareId
 	shares, err := appConfigLib.GetAppConfig().GetShares(ctx, bizName)
 	if err != nil {
 		return nil, err
 	}
-	shareKey := appConfigLib.ShareKeyFromId(shares, shareId)
+	shareKey := appConfigLib.ShareKeyFromId(shares, model.ShareId())
 	db, err := GetDBByShareKey(ctx, bizName, shareKey, nil)
 	if err != nil {
 		return nil, err
@@ -68,6 +70,9 @@ func GetDB(ctx context.Context, bizName string, shareId string, model ITableName
 	
 	return db,err
 }
+
+var dbMap sync.Map
+var dbMapLocker sync.Mutex
 
 func GetDBByShareKey(ctx context.Context, bizName string, shareKey xetcd.ShareName, _dbConfig *DBConfig) (*gorm.DB, error) {
 	// 我们将根据 shareId 计算出 shareKey
@@ -81,12 +86,25 @@ func GetDBByShareKey(ctx context.Context, bizName string, shareKey xetcd.ShareNa
 		}
 	}
 
-	// 连接数据库
-	db, err := gorm.Open(mysql.Open(dbConfig.getDSN()), &gorm.Config{})
-	if err != nil {
-		return nil, xerr.NewXError(err, "连接数据库失败")
+	dbConfigDSN := dbConfig.getDSN()
+	val, ok := dbMap.Load(dbConfigDSN)
+	if !ok {
+		dbMapLocker.Lock()
+		defer dbMapLocker.Unlock()
+
+		val, ok = dbMap.Load(dbConfigDSN)
+		if ok {
+			return val.(*gorm.DB), nil
+		}
+		// 连接数据库
+		db, err := gorm.Open(mysql.Open(dbConfigDSN), &gorm.Config{})
+		if err != nil {
+			return nil, xerr.NewXError(err, "连接数据库失败")
+		}
+		dbMap.Store(dbConfigDSN, db)
+		return db, nil
 	}
-	return db, nil
+	return val.(*gorm.DB), nil
 }
 
 func ForEachShare(ctx context.Context, bizName string, cb func(shareKey xetcd.ShareName, retryCnt int, db *gorm.DB, err error) (stopRetry bool)) error {
@@ -114,9 +132,7 @@ func _getDBConfig(ctx context.Context, bizName string, shareKey xetcd.ShareName)
 	if err != nil {
 		return nil, xerr.NewXError(err, fmt.Sprintf("can't not found config on %v %v %v", bizName, shareKey, routeTag))
 	}
-	idx := randx.RandomInt(len(instanceConfig.ConnConfig))
-	logx.Infof("idex %v connConfigLen: %v instanceConfig: %v\n", idx, len(instanceConfig.ConnConfig), instanceConfig)
-	conn := instanceConfig.ConnConfig[idx]
+	conn := randx.SelectOne(instanceConfig.ConnConfig)
 	var _dbConfig = &DBConfig{}
 	err = json.Unmarshal([]byte(conn), _dbConfig)
 	return _dbConfig, err

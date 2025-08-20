@@ -35,7 +35,8 @@ func NewLogger() (*zap.Logger, error) {
 			syncWriter,
 			defaultLogLevel,
 		),
-		// zap.AddCaller(),
+		zap.AddCaller(),
+		zap.AddCallerSkip(1),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	)
 	defer logger.Sync()
