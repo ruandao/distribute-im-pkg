@@ -1,4 +1,4 @@
-package urlhelper
+package urlHelper
 
 import "fmt"
 
