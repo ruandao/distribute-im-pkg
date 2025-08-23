@@ -32,11 +32,17 @@ func (xerr *Error) String() string {
 }
 
 func NewXError(err error, msgArr ...string) error {
+	if err == nil {
+		return nil
+	}
 	msg := ""
 	if len(msgArr) > 0 {
 		msg = strings.Join(msgArr, "\n")
 	}
 	xerr, ok := err.(zError)
+	if ok && msg == "" {
+		return xerr
+	}
 	if !ok {
 		// new XError
 		_err := errors.Wrap(err, "\n"+msg)

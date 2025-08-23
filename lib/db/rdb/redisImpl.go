@@ -119,7 +119,7 @@ func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTa
 	if redisC == nil {
 		redisC, err = r.getRedisC(ctx, bizName, routeTag, key)
 		if err != nil {
-			return nil, err
+			return nil, xerr.NewXError(err)
 		}
 	}
 
@@ -173,9 +173,9 @@ func (r *RedisImpl) Set(ctx context.Context, key string, value interface{}, expi
 	}
 
 	if expiration > 0 {
-		return client.Set(ctx, key, value, expiration).Err()
+		return xerr.NewXError(client.Set(ctx, key, value, expiration).Err()) 
 	} else {
-		return client.Set(ctx, key, value, 0).Err()
+		return xerr.NewXError(client.Set(ctx, key, value, 0).Err()) 
 	}
 }
 
@@ -183,14 +183,27 @@ func (r *RedisImpl) Set(ctx context.Context, key string, value interface{}, expi
 func (r *RedisImpl) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
 	client, err := r.getRedisClientByKey(ctx, key)
 	if err != nil {
-		return false, err
+		return false, xerr.NewXError(err)
 	}
 
 	if expiration > 0 {
-		return client.SetNX(ctx, key, value, expiration).Result()
+		ret, err := client.SetNX(ctx, key, value, expiration).Result()
+		return ret, xerr.NewXError(err)
 	} else {
-		return client.SetNX(ctx, key, value, 0).Result()
+		ret, err := client.SetNX(ctx, key, value, 0).Result()
+		return ret, xerr.NewXError(err)
 	}
+}
+
+// ZRem 从有序集合中删除一个或多个成员
+func (r *RedisImpl) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
+	client, err := r.getRedisClientByKey(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+
+	ret, err := client.ZRem(ctx, key, members...).Result()
+	return ret, xerr.NewXError(err)
 }
 
 // Rename 重命名键
@@ -202,7 +215,22 @@ func (r *RedisImpl) Rename(ctx context.Context, oldKey string, newKey string) er
 	}
 
 	// 执行重命名操作
-	return client.Rename(ctx, oldKey, newKey).Err()
+	err = client.Rename(ctx, oldKey, newKey).Err()
+	if err != nil {
+		return xerr.NewXError(err)
+	}
+	return nil
+}
+
+// ZCount 获取有序集合中指定分数范围内的成员数量
+func (r *RedisImpl) ZCount(ctx context.Context, key string, min string, max string) (int64, error) {
+	client, err := r.getRedisClientByKey(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+
+	ret, err := client.ZCount(ctx, key, min, max).Result()
+	return ret, xerr.NewXError(err)
 }
 
 // Get 获取键值
@@ -212,7 +240,8 @@ func (r *RedisImpl) Get(ctx context.Context, key string) (string, error) {
 		return "", err
 	}
 
-	return client.Get(ctx, key).Result()
+	ret, err := client.Get(ctx, key).Result()
+	return ret, xerr.NewXError(err)
 }
 
 // HMSet 设置哈希表值
@@ -222,7 +251,7 @@ func (r *RedisImpl) HMSet(ctx context.Context, key string, values ...interface{}
 		return err
 	}
 
-	return client.HMSet(ctx, key, values...).Err()
+	return xerr.NewXError(client.HMSet(ctx, key, values...).Err()) 
 }
 
 // HMGet 获取哈希表值
@@ -235,7 +264,7 @@ func (r *RedisImpl) HMGet(ctx context.Context, key string, fields ...string) (ma
 	result := make(map[string]string)
 	values, err := client.HMGet(ctx, key, fields...).Result()
 	if err != nil {
-		return nil, err
+		return nil, xerr.NewXError(err, fmt.Sprintf("key: %v fields: %v values: %v err: %v", key, fields, values, err))
 	}
 
 	for i, field := range fields {
@@ -258,7 +287,7 @@ func (r *RedisImpl) Del(ctx context.Context, key string) error {
 		return err
 	}
 
-	return client.Del(ctx, key).Err()
+	return xerr.NewXError(client.Del(ctx, key).Err()) 
 }
 
 // Exists 检查键是否存在
@@ -270,7 +299,7 @@ func (r *RedisImpl) Exists(ctx context.Context, key string) (bool, error) {
 
 	count, err := client.Exists(ctx, key).Result()
 	if err != nil {
-		return false, err
+		return false, xerr.NewXError(err)
 	}
 
 	return count > 0, nil
@@ -282,7 +311,8 @@ func (r *RedisImpl) Expire(ctx context.Context, key string, expiration time.Dura
 	if err != nil {
 		return xerr.NewXError(err, "get redis client failed")
 	}
-	cmd := client.Set(ctx, "updateKeyExpire" + key, expiration, time.Hour)
+	// 用于核对,过期时间是否设置正确
+	cmd := client.Set(ctx, "updateKeyExpire" + key, expiration/time.Second, time.Hour)
 	if cmd.Err() != nil {
 		logx.Errorf("updateKeyExpire err: %v", cmd.Err())
 	}
@@ -300,7 +330,8 @@ func (r *RedisImpl) ZRangeByScore(ctx context.Context, key string, opt *redis.ZR
 		return nil, err
 	}
 
-	return client.ZRangeByScore(ctx, key, opt).Result()
+	ret, err := client.ZRangeByScore(ctx, key, opt).Result()
+	return ret, xerr.NewXError(err)
 }
 
 // ZAdd 向有序集合中添加成员
@@ -310,5 +341,6 @@ func (r *RedisImpl) ZAdd(ctx context.Context, key string, members ...*redis.Z) (
 		return 0, err
 	}
 
-	return client.ZAdd(ctx, key, members...).Result()
+	ret, err := client.ZAdd(ctx, key, members...).Result()
+	return ret, xerr.NewXError(err)
 }

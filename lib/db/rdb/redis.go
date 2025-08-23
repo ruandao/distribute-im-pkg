@@ -28,8 +28,12 @@ type IRedis interface {
 	ZAdd(ctx context.Context, key string, members ...*redis.Z) (int64, error)
 	// 只有当键不存在时才设置键值
 	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	// 从有序集合中删除一个或多个成员
+	ZRem(ctx context.Context, key string, members ...interface{}) (int64, error)
 	// 重命名键
 	Rename(ctx context.Context, oldKey string, newKey string) error
+	// 获取有序集合中指定分数范围内的成员数量
+	ZCount(ctx context.Context, key string, min string, max string) (int64, error)
 	// 选择Redis实例的核心方法
 	getRedisClientByKey(ctx context.Context, key string) (*redis.Client, error)
 }

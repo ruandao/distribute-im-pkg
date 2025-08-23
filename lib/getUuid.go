@@ -1,7 +1,9 @@
 package lib
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
@@ -22,9 +24,15 @@ func RegisterNodeID(nodeId int) error {
 	return nil
 }
 
-func GetUuid() int64 {
+type Int64S int64
+
+func (i Int64S) MarshalJSON() ([]byte, error) {
+    return json.Marshal(strconv.FormatInt(int64(i), 10))
+}
+
+func GetUuid() Int64S {
 	if xNode == nil {
 		panic("请先注册节点ID")
 	}
-	return int64(xNode.Generate())
+	return Int64S(xNode.Generate())
 }

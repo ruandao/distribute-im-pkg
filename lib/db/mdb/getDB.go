@@ -67,7 +67,7 @@ func GetDB(ctx context.Context, bizName string, model IShareModel) (*gorm.DB, er
 	if model != nil {
 		db = db.Table(model.TableName())
 	}
-	
+	// return db.Debug(),err
 	return db,err
 }
 

@@ -38,6 +38,10 @@ func (bConf BConfig) LoadAppId() string {
 	return fmt.Sprintf("%v-%v", bConf.BusinessName, bConf.Version)
 }
 
+func (bConf BConfig)Get(key string) any {
+	return viper.Get(key)
+}
+
 func LoadBasicConfig() (*BConfig, error) {
 
 	if !fileExists("must.env") {
