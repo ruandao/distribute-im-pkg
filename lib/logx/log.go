@@ -3,6 +3,7 @@ package logx
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
@@ -48,6 +49,17 @@ func init() {
 	_logger, err = NewLogger()
 	if err != nil {
 		fmt.Printf("%v", xerr.NewXError(err))
+	}
+}
+
+func DebugX(msg string) func(fields ...any) {
+	// fmt.Printf(msg+"\n", fields...)
+	return func(fields ...any) {
+		sList := []string{msg}
+		for _, f := range fields {
+			sList = append(sList, fmt.Sprintf("%v", f))
+		}
+		_logger.Debug(strings.Join(sList, " "))
 	}
 }
 

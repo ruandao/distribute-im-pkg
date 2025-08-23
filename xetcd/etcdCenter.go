@@ -19,6 +19,8 @@ import (
 type XContent struct {
 	Endpoints []string
 	cli       *etcdLib.Client
+	cancelF func()
+
 	c         sync.Map
 	closeCh   chan struct{}
 	// string: []*ClusterItem
@@ -27,18 +29,6 @@ type XContent struct {
 	keyWatchMap XMap
 }
 
-type XMap struct {
-	sync.Map
-}
-
-func (xMap *XMap) Keys() []string {
-	var keys []string
-	xMap.Range(func(key, value any) bool {
-		keys = append(keys, key.(string))
-		return true
-	})
-	return keys
-}
 
 func (content *XContent) connect(ctx context.Context) error {
 	cli, err := etcdLib.New(etcdLib.Config{
@@ -64,7 +54,13 @@ func (content *XContent) connect(ctx context.Context) error {
 	}
 
 	go func() {
+		ctx, cancelF := context.WithCancel(context.Background())
+		content.cancelF = cancelF
 		ch := cli.Watch(ctx, "/", etcdLib.WithPrefix())
+		logx.DebugX("etcdWatch open")("")
+		defer func() {
+				logx.DebugX("etcdWatch closed")("")
+			}()
 		for {
 			select {
 			case kvChange, ok := <-ch:
@@ -135,8 +131,11 @@ func (content *XContent) connect(ctx context.Context) error {
 	return nil
 }
 func (content *XContent) Close() {
-	close(content.closeCh)
-	content.cli.Close()
+	if content.cancelF != nil {
+		content.cancelF()
+		close(content.closeCh)
+		content.cli.Close()
+	}
 }
 
 func (content *XContent) Range(fn func(key string, value string) bool) {
@@ -252,7 +251,9 @@ func (content *XContent) GetDepServicesShareDBInstancesConfig(keyPrefix string, 
 	if err != nil {
 		return nil, err
 	}
-	return shareCluster.Get(shareKey, routeTag)
+	shareConf, err := shareCluster.Get(shareKey, routeTag)
+	logx.DebugX("GetDepServicesShareDBInstancesConfig")(shareConf, err)
+	return shareConf, err
 }
 
 func (content *XContent) KeyWatch(key string, changeFunc KVChangeCB) func() {
