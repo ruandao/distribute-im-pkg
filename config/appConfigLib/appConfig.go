@@ -51,7 +51,7 @@ func (appConf *AppConfig) Watch() {
 			flyConfigWatch.flyConfig = flyConfig
 		}
 	}
-	
+
 	flyConfigWatch.keyWatchRemove = appConf.XContent.KeyWatch(appConf.ConfigKeyPrefix(), func(s string, err error) {
 		parseFlyConfig(s, err)
 	})

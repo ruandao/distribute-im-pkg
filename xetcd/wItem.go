@@ -8,6 +8,6 @@ type ClusterItem struct {
 
 type KVChangeCB func(content string, err error)
 type KVItem struct {
-	key string
+	key        string
 	changeFunc KVChangeCB
 }

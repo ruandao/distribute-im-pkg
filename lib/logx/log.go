@@ -74,13 +74,12 @@ func Infof(format string, others ...any) {
 	// fmt.Printf(format, others...)
 	_logger.Info(fmt.Sprintf(format, others...))
 }
-func InfoX(tag string,) func(others...any) {
+func InfoX(tag string) func(others ...any) {
 	return func(others ...any) {
 		// fmt.Printf(format, others...)
 		_logger.Info(fmt.Sprintf("%+v %+v", tag, others))
 	}
 }
-
 
 func ErrorX(msg string) func(fields ...any) {
 	// fmt.Printf(msg+"\n", fields...)

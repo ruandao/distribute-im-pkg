@@ -15,7 +15,7 @@ import (
 type BConfig struct {
 	BusinessName string `mapstructure:"business_name"`
 	Role         string `mapstructure:"role"`
-	GrpcRole		 string `mapstructure:"grpcRole"`
+	GrpcRole     string `mapstructure:"grpcRole"`
 	Version      string `mapstructure:"version"`
 	ShareName    string `mapstructure:"share_name"` // 标明这个应用配置是服务于哪个数据集的
 	IP           string `mapstructure:"ip"`
@@ -46,7 +46,7 @@ func (bConf BConfig) LoadAppId() string {
 	return fmt.Sprintf("%v-%v", bConf.BusinessName, bConf.Version)
 }
 
-func (bConf BConfig)Get(key string) any {
+func (bConf BConfig) Get(key string) any {
 	return viper.Get(key)
 }
 

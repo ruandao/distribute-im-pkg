@@ -19,16 +19,15 @@ import (
 type XContent struct {
 	Endpoints []string
 	cli       *etcdLib.Client
-	cancelF func()
+	cancelF   func()
 
-	c         sync.Map
-	closeCh   chan struct{}
+	c       sync.Map
+	closeCh chan struct{}
 	// string: []*ClusterItem
 	clusterWatchMap XMap
 	// string: []KVItem
 	keyWatchMap XMap
 }
-
 
 func (content *XContent) connect(ctx context.Context) error {
 	cli, err := etcdLib.New(etcdLib.Config{
@@ -59,8 +58,8 @@ func (content *XContent) connect(ctx context.Context) error {
 		ch := cli.Watch(ctx, "/", etcdLib.WithPrefix())
 		logx.DebugX("etcdWatch open")("")
 		defer func() {
-				logx.DebugX("etcdWatch closed")("")
-			}()
+			logx.DebugX("etcdWatch closed")("")
+		}()
 		for {
 			select {
 			case kvChange, ok := <-ch:
@@ -203,7 +202,7 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) (*RouteShareCon
 			// keyWithoutPrefix
 			// /db0/default/127.0.0.1:3306/state
 			pieces := strings.Split(keyWithoutPrefix, "/")
-			shareKey, tag, ipport  := ShareName(pieces[1]), RouteTag(pieces[2]), pieces[3]
+			shareKey, tag, ipport := ShareName(pieces[1]), RouteTag(pieces[2]), pieces[3]
 
 			// fmt.Printf("tag: %v instance: %v dbConfig: %v err: %v\n", tag, instance, dbConfig, err)
 			found = true
@@ -366,7 +365,7 @@ func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
 }
 
 func New(bConfig *bConfLib.BConfig) (*XContent, error) {
-	ctx,cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer func() {
 		cancel()
 	}()
@@ -382,7 +381,8 @@ func New(bConfig *bConfLib.BConfig) (*XContent, error) {
 }
 
 var _xContent *XContent
-func Register(xContent *XContent)  {
+
+func Register(xContent *XContent) {
 	_xContent = xContent
 }
 

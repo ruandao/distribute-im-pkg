@@ -19,14 +19,15 @@ type RouteShareConns struct {
 	// shareKey: routeTag: *ShareConfig
 	M map[ShareName]map[RouteTag]*ShareConfig
 }
+
 func NewRouteShareConns(m map[ShareName]map[RouteTag]*ShareConfig) RouteShareConns {
 	if m == nil {
 		panic("m shouldn't be an nil")
 	}
-	return  RouteShareConns{M: m}
+	return RouteShareConns{M: m}
 }
 
-func (shareCluster *RouteShareConns)GetEffectTag(shareKey ShareName, routeTag RouteTag) RouteTag {
+func (shareCluster *RouteShareConns) GetEffectTag(shareKey ShareName, routeTag RouteTag) RouteTag {
 	dedicateRoute := shareCluster.M[shareKey][routeTag]
 	if dedicateRoute == nil {
 		// 一般而言,我们会将 default 路由,视为 测试节点,以避免当配置错误时,流量对生产环境产生影响
@@ -39,7 +40,7 @@ func (shareCluster *RouteShareConns) Get(shareKey ShareName, routeTag RouteTag) 
 	if shareCluster == nil {
 		return nil, xerr.NewXError(fmt.Errorf("shareCluster for shareKey: %v routeTag: %v shouldn't be nil", shareKey, routeTag))
 	}
-	
+
 	routeTag = shareCluster.GetEffectTag(shareKey, routeTag)
 	dedicateInstance := shareCluster.M[shareKey][routeTag]
 	if dedicateInstance == nil {

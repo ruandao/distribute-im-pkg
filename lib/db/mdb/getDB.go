@@ -68,7 +68,7 @@ func GetDB(ctx context.Context, bizName string, model IShareModel) (*gorm.DB, er
 		db = db.Table(model.TableName())
 	}
 	// return db.Debug(),err
-	return db,err
+	return db, err
 }
 
 var dbMap sync.Map

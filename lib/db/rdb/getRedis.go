@@ -16,7 +16,7 @@ type RedisConfig struct {
 	PoolSize int    // 连接池大小
 }
 
-func (redisC *RedisConfig)getDSN() string {
+func (redisC *RedisConfig) getDSN() string {
 	return fmt.Sprintf("%v:%v:%v:%v", redisC.Addr, redisC.Password, redisC.DB, redisC.PoolSize)
 }
 

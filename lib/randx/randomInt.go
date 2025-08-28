@@ -23,7 +23,6 @@ func SelectOne[T any](arr []T) T {
 	return RandomOne(arr)
 }
 
-
 func RandomOne[T any](arr []T) T {
 	arrLen := len(arr)
 	return arr[RandomInt(arrLen)]

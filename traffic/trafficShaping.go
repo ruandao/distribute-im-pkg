@@ -59,7 +59,7 @@ func GetRPCClient(ctx context.Context, businessNode string) (*grpc.ClientConn, e
 
 func GetRPCConnX(ctx context.Context, bizPrefix string, shareId string) (conn *grpc.ClientConn, err error) {
 	routeTag := GetRouteTag(ctx)
-	// shareKey := 
+	// shareKey :=
 	shareKey, err := appConfigLib.GetAppConfig().GetShareKeyFromId(ctx, bizPrefix, shareId)
 	if err != nil {
 		return nil, xerr.NewXError(err, "获取shareKey失败")
@@ -75,15 +75,15 @@ func GetRPCConnX(ctx context.Context, bizPrefix string, shareId string) (conn *g
 			logx.ErrorX("grpc 连接 ipport 失败")(ipport, err)
 			return true
 		}
-		return  false
+		return false
 	})
 	return conn, err
 }
-func GetRPCConn(ctx context.Context,  endpoint string) (*grpc.ClientConn, error) {
+func GetRPCConn(ctx context.Context, endpoint string) (*grpc.ClientConn, error) {
 	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
-		conn, err := grpc.NewClient(endpoint, dialOption)
-		if err != nil {
-			return nil, xerr.NewXError(err, "连接失败")
-		}
-		return conn, nil
+	conn, err := grpc.NewClient(endpoint, dialOption)
+	if err != nil {
+		return nil, xerr.NewXError(err, "连接失败")
+	}
+	return conn, nil
 }

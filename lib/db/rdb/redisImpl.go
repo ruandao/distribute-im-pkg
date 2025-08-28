@@ -49,27 +49,27 @@ func (r *RedisImpl) Watch() {
 		for _, shareClusters := range cluster.M {
 			for _, shareConns := range shareClusters {
 				shareConns.ConnConfig.Range(func(key, value any) bool {
-						ipport := key.(string)
-						conn := value.(string)
-						redisC := &RedisConfig{}
-						err := json.Unmarshal([]byte(conn), redisC)
-						if err != nil {
-							logx.ErrorX("redis config unmarshal failed ")(
-								fmt.Sprintf("ipport: %v ", ipport),
-								fmt.Sprintf("val: %v ", conn),
-								fmt.Sprintf("err: %v ", err),
-							)
-							return true
-						}
-						if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
-							logx.ErrorX("ping test to redis instance failed")(
-								fmt.Sprintf("config: %v", redisC),
-							)
-							return true
-						}
+					ipport := key.(string)
+					conn := value.(string)
+					redisC := &RedisConfig{}
+					err := json.Unmarshal([]byte(conn), redisC)
+					if err != nil {
+						logx.ErrorX("redis config unmarshal failed ")(
+							fmt.Sprintf("ipport: %v ", ipport),
+							fmt.Sprintf("val: %v ", conn),
+							fmt.Sprintf("err: %v ", err),
+						)
+						return true
+					}
+					if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
+						logx.ErrorX("ping test to redis instance failed")(
+							fmt.Sprintf("config: %v", redisC),
+						)
+						return true
+					}
 					return true
 				})
-				
+
 			}
 		}
 
@@ -123,6 +123,7 @@ func (r *RedisImpl) GetRedisClient(ctx context.Context, bizName string, key stri
 
 var dbMap sync.Map
 var dbMapLocker sync.Mutex
+
 func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string, _redisC *RedisConfig) (rCli *redis.Client, err error) {
 	// 创建Redis客户端
 	// in default, the _redisC will be nil
@@ -153,7 +154,7 @@ func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTa
 		return rdb, nil
 
 	}
-	
+
 	return val.(*redis.Client), nil
 }
 
@@ -184,9 +185,9 @@ func (r *RedisImpl) Set(ctx context.Context, key string, value interface{}, expi
 	}
 
 	if expiration > 0 {
-		return xerr.NewXError(client.Set(ctx, key, value, expiration).Err()) 
+		return xerr.NewXError(client.Set(ctx, key, value, expiration).Err())
 	} else {
-		return xerr.NewXError(client.Set(ctx, key, value, 0).Err()) 
+		return xerr.NewXError(client.Set(ctx, key, value, 0).Err())
 	}
 }
 
@@ -262,7 +263,7 @@ func (r *RedisImpl) HMSet(ctx context.Context, key string, values ...interface{}
 		return err
 	}
 
-	return xerr.NewXError(client.HMSet(ctx, key, values...).Err()) 
+	return xerr.NewXError(client.HMSet(ctx, key, values...).Err())
 }
 
 // HMGet 获取哈希表值
@@ -296,7 +297,7 @@ func (r *RedisImpl) Del(ctx context.Context, key string) error {
 		return err
 	}
 
-	return xerr.NewXError(client.Del(ctx, key).Err()) 
+	return xerr.NewXError(client.Del(ctx, key).Err())
 }
 
 // Exists 检查键是否存在
@@ -321,7 +322,7 @@ func (r *RedisImpl) Expire(ctx context.Context, key string, expiration time.Dura
 		return xerr.NewXError(err, "get redis client failed")
 	}
 	// 用于核对,过期时间是否设置正确
-	cmd := client.Set(ctx, "updateKeyExpire" + key, expiration/time.Second, time.Hour)
+	cmd := client.Set(ctx, "updateKeyExpire"+key, expiration/time.Second, time.Hour)
 	if cmd.Err() != nil {
 		logx.Errorf("updateKeyExpire err: %v", cmd.Err())
 	}
