@@ -1,10 +1,11 @@
 package logx
 
 import (
-	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,7 +48,7 @@ func init() {
 	var err error
 	_logger, err = NewLogger()
 	if err != nil {
-		fmt.Printf("%v", xerr.NewXError(err))
+		fmt.Printf("%+v", xerr.NewXError(err))
 	}
 }
 
@@ -56,7 +57,7 @@ func DebugX(msg string) func(fields ...any) {
 	return func(fields ...any) {
 		sList := []string{msg}
 		for _, f := range fields {
-			sList = append(sList, fmt.Sprintf("%v", f))
+			sList = append(sList, fmt.Sprintf("%+v", f))
 		}
 		_logger.Debug(strings.Join(sList, " "))
 	}
@@ -76,7 +77,7 @@ func Infof(format string, others ...any) {
 func InfoX(tag string,) func(others...any) {
 	return func(others ...any) {
 		// fmt.Printf(format, others...)
-		_logger.Info(fmt.Sprintf("%v %v", tag, others))
+		_logger.Info(fmt.Sprintf("%+v %+v", tag, others))
 	}
 }
 
@@ -86,7 +87,7 @@ func ErrorX(msg string) func(fields ...any) {
 	return func(fields ...any) {
 		sList := []string{msg}
 		for _, f := range fields {
-			sList = append(sList, fmt.Sprintf("%v", f))
+			sList = append(sList, fmt.Sprintf("%+v", f))
 		}
 		_logger.Error(strings.Join(sList, " "))
 	}
@@ -102,6 +103,6 @@ func Error(format string, others ...any) {
 
 func Fatal(err error) {
 	// fmt.Printf("%v", err)
-	_logger.Fatal(fmt.Sprintf("%v", err))
+	_logger.Fatal(fmt.Sprintf("%+v", err))
 	os.Exit(1)
 }

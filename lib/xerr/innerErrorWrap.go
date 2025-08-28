@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 )
 
@@ -34,6 +35,9 @@ func (xerr *Error) String() string {
 func NewXError(err error, msgArr ...string) error {
 	if err == nil {
 		return nil
+	}
+	if err == redis.Nil {
+		return redis.Nil
 	}
 	msg := ""
 	if len(msgArr) > 0 {

@@ -1,8 +1,9 @@
 package xetcd
 
 import (
-	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 	"fmt"
+
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 )
 
 type RouteTag string

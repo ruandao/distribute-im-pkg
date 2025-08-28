@@ -380,3 +380,15 @@ func New(bConfig *bConfLib.BConfig) (*XContent, error) {
 	logx.Infof("etcd connect done \n")
 	return content, nil
 }
+
+var _xContent *XContent
+func Register(xContent *XContent)  {
+	_xContent = xContent
+}
+
+func Get() *XContent {
+	if _xContent == nil {
+		panic(xerr.NewError("never register XContent"))
+	}
+	return _xContent
+}

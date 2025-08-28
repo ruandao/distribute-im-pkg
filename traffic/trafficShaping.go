@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
+	"github.com/ruandao/distribute-im-pkg/xetcd"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -55,7 +57,29 @@ func GetRPCClient(ctx context.Context, businessNode string) (*grpc.ClientConn, e
 	return nil, xerr.NewXError(fmt.Errorf("not endpoint found for %v of %v node", businessNode, reqTag), "")
 }
 
-func GetRPCConnX(ctx context.Context,  endpoint string) (*grpc.ClientConn, error) {
+func GetRPCConnX(ctx context.Context, bizPrefix string, shareId string) (conn *grpc.ClientConn, err error) {
+	routeTag := GetRouteTag(ctx)
+	// shareKey := 
+	shareKey, err := appConfigLib.GetAppConfig().GetShareKeyFromId(ctx, bizPrefix, shareId)
+	if err != nil {
+		return nil, xerr.NewXError(err, "获取shareKey失败")
+	}
+	shareConfig, err := xetcd.Get().GetDepServicesShareDBInstancesConfig(bizPrefix, shareKey, routeTag)
+	if err != nil {
+		return nil, err
+	}
+	shareConfig.ConnConfig.Range(func(key, value any) bool {
+		ipport := key.(string)
+		conn, err = GetRPCConn(ctx, ipport)
+		if err != nil {
+			logx.ErrorX("grpc 连接 ipport 失败")(ipport, err)
+			return true
+		}
+		return  false
+	})
+	return conn, err
+}
+func GetRPCConn(ctx context.Context,  endpoint string) (*grpc.ClientConn, error) {
 	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
 		conn, err := grpc.NewClient(endpoint, dialOption)
 		if err != nil {
