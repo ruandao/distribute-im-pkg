@@ -1,11 +1,10 @@
 package logx
 
 import (
+	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -81,6 +80,17 @@ func InfoX(tag string,) func(others...any) {
 	}
 }
 
+
+func ErrorX(msg string) func(fields ...any) {
+	// fmt.Printf(msg+"\n", fields...)
+	return func(fields ...any) {
+		sList := []string{msg}
+		for _, f := range fields {
+			sList = append(sList, fmt.Sprintf("%v", f))
+		}
+		_logger.Error(strings.Join(sList, " "))
+	}
+}
 func Errorf(format string, others ...any) {
 	// fmt.Printf("Error:"+format, others...)
 	_logger.Error(fmt.Sprintf(format, others...))

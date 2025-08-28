@@ -1,9 +1,8 @@
 package xetcd
 
 import (
-	"fmt"
-
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
+	"fmt"
 )
 
 type RouteTag string
@@ -11,7 +10,7 @@ type ShareName string
 type ShareConfig struct {
 	RouteTag      RouteTag
 	ShareInstance ShareName
-	ConnConfig    []string
+	ConnConfig    XMap
 }
 
 type RouteShareConns struct {

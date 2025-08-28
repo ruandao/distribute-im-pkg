@@ -15,10 +15,12 @@ import (
 type BConfig struct {
 	BusinessName string `mapstructure:"business_name"`
 	Role         string `mapstructure:"role"`
+	GrpcRole		 string `mapstructure:"grpcRole"`
 	Version      string `mapstructure:"version"`
 	ShareName    string `mapstructure:"share_name"` // 标明这个应用配置是服务于哪个数据集的
 	IP           string `mapstructure:"ip"`
 	Port         string `mapstructure:"port"`
+	GrpcPort     string `mapstructure:"grpcPort"`
 	EtcdAddrs    string `mapstructure:"etcd_addrs"`
 	Lease        int64  `mapstructure:"lease_time_seconds"`
 }
@@ -32,6 +34,12 @@ func (bConf BConfig) ListenAddr() string {
 }
 func (bConf BConfig) RegisterAddr() string {
 	return fmt.Sprintf("%v:%v", bConf.IP, bConf.Port)
+}
+func (bConf BConfig) ListenGrpcAddr() string {
+	return fmt.Sprintf("0.0.0.0:%v", bConf.GrpcPort)
+}
+func (bConf BConfig) RegisterGrpcAddr() string {
+	return fmt.Sprintf("%v:%v", bConf.IP, bConf.GrpcPort)
 }
 
 func (bConf BConfig) LoadAppId() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	"google.golang.org/grpc"
@@ -46,9 +47,19 @@ func GetRPCClient(ctx context.Context, businessNode string) (*grpc.ClientConn, e
 		dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
 		conn, err := grpc.NewClient(endPoint, dialOption)
 		if err != nil {
-			return nil, xerr.NewXError(err, fmt.Sprintf("get client for %v fail: %v", endPoint, err))
+			logx.ErrorX("get client fail")(endPoint, err)
+			continue
 		}
 		return conn, nil
 	}
 	return nil, xerr.NewXError(fmt.Errorf("not endpoint found for %v of %v node", businessNode, reqTag), "")
+}
+
+func GetRPCConnX(ctx context.Context,  endpoint string) (*grpc.ClientConn, error) {
+	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
+		conn, err := grpc.NewClient(endpoint, dialOption)
+		if err != nil {
+			return nil, xerr.NewXError(err, "连接失败")
+		}
+		return conn, nil
 }

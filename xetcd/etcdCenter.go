@@ -203,7 +203,7 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) (*RouteShareCon
 			// keyWithoutPrefix
 			// /db0/default/127.0.0.1:3306/state
 			pieces := strings.Split(keyWithoutPrefix, "/")
-			shareKey, tag  := ShareName(pieces[1]), RouteTag(pieces[2])
+			shareKey, tag, ipport  := ShareName(pieces[1]), RouteTag(pieces[2]), pieces[3]
 
 			// fmt.Printf("tag: %v instance: %v dbConfig: %v err: %v\n", tag, instance, dbConfig, err)
 			found = true
@@ -221,7 +221,7 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) (*RouteShareCon
 				instanceOnSpecficShare = &ShareConfig{
 					RouteTag:      tag,
 					ShareInstance: shareKey,
-					ConnConfig:    nil,
+					ConnConfig:    XMap{},
 				}
 			}
 			defer func() {
@@ -232,7 +232,7 @@ func (content *XContent) GetDepServicesCluster(keyPrefix string) (*RouteShareCon
 				shareMap[tag] = instanceOnSpecficShare
 			}()
 
-			instanceOnSpecficShare.ConnConfig = append(instanceOnSpecficShare.ConnConfig, value)
+			instanceOnSpecficShare.ConnConfig.Store(ipport, value)
 		}
 		return true
 	})
@@ -252,7 +252,7 @@ func (content *XContent) GetDepServicesShareDBInstancesConfig(keyPrefix string, 
 		return nil, err
 	}
 	shareConf, err := shareCluster.Get(shareKey, routeTag)
-	logx.DebugX("GetDepServicesShareDBInstancesConfig")(shareConf, err)
+	// logx.DebugX("GetDepServicesShareDBInstancesConfig")(shareConf, err)
 	return shareConf, err
 }
 
@@ -332,7 +332,7 @@ func (content *XContent) ClusterWatch(keyPrefix string, changeFunc ClusterChange
 		}
 		new := append(preList, wItem)
 		swapped := content.clusterWatchMap.CompareAndSwap(keyPrefix, pre, new)
-		logx.Infof("ClusterWatch %v pre: %v new: %v swapped: %v map: %v\n", keyPrefix, pre, new, swapped, content.clusterWatchMap)
+		logx.Infof("ClusterWatch %v pre: %v new: %v swapped: %v map: %v\n", keyPrefix, pre, new, swapped, &content.clusterWatchMap)
 		if swapped {
 			return removeF
 		}

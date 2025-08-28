@@ -55,3 +55,25 @@ func NewXError(err error, msgArr ...string) error {
 	xerr = &Error{e: _err}
 	return xerr
 }
+func NewError(content string, msgArr ...string) error {
+	err := errors.New(content)
+	msg := ""
+	if len(msgArr) > 0 {
+		msg = strings.Join(msgArr, "\n")
+	}
+	xerr, ok := err.(zError)
+	if ok && msg == "" {
+		return xerr
+	}
+	if !ok {
+		// new XError
+		_err := errors.Wrap(err, "\n"+msg)
+		xerr = &Error{e: _err}
+		return xerr
+	}
+	// add message to bottom error
+	_err := xerr.XError().e
+	_err = errors.Wrap(_err, "\n"+msg)
+	xerr = &Error{e: _err}
+	return xerr
+}

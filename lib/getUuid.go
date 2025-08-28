@@ -25,7 +25,9 @@ func RegisterNodeID(nodeId int) error {
 }
 
 type Int64S int64
-
+func (i Int64S) ToString() (string) {
+    return strconv.FormatInt(int64(i), 10)
+}
 func (i Int64S) MarshalJSON() ([]byte, error) {
     return json.Marshal(strconv.FormatInt(int64(i), 10))
 }

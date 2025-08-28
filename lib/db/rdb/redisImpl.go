@@ -48,18 +48,28 @@ func (r *RedisImpl) Watch() {
 		}
 		for _, shareClusters := range cluster.M {
 			for _, shareConns := range shareClusters {
-				for _, conn := range shareConns.ConnConfig {
-					redisC := &RedisConfig{}
-					err := json.Unmarshal([]byte(conn), redisC)
-					if err != nil {
-						logx.Errorf("redis config unmarshal failed val: #%v# err: %v", conn, err)
-						return
-					}
-					if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
-						logx.Errorf("ping test to redis instance failed: %v", redisC)
-						return
-					}
-				}
+				shareConns.ConnConfig.Range(func(key, value any) bool {
+						ipport := key.(string)
+						conn := value.(string)
+						redisC := &RedisConfig{}
+						err := json.Unmarshal([]byte(conn), redisC)
+						if err != nil {
+							logx.ErrorX("redis config unmarshal failed ")(
+								fmt.Sprintf("ipport: %v ", ipport),
+								fmt.Sprintf("val: %v ", conn),
+								fmt.Sprintf("err: %v ", err),
+							)
+							return true
+						}
+						if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
+							logx.ErrorX("ping test to redis instance failed")(
+								fmt.Sprintf("config: %v", redisC),
+							)
+							return true
+						}
+					return true
+				})
+				
 			}
 		}
 
@@ -96,9 +106,10 @@ func (r *RedisImpl) getRedisC(ctx context.Context, bizName string, routeTag xetc
 		return nil, err
 	}
 
-	connStr := randx.SelectOne(instanceC.ConnConfig)
+	connKey := randx.SelectOne(instanceC.ConnConfig.Keys())
+	connStr, _ := instanceC.ConnConfig.Load(connKey)
 	redisC := &RedisConfig{}
-	err = json.Unmarshal([]byte(connStr), redisC)
+	err = json.Unmarshal([]byte(connStr.(string)), redisC)
 	if err != nil {
 		return nil, xerr.NewXError(err, fmt.Sprintf("redis config parse failed val: #%v#", connStr))
 	}
@@ -271,8 +282,6 @@ func (r *RedisImpl) HMGet(ctx context.Context, key string, fields ...string) (ma
 		if i < len(values) {
 			if values[i] != nil {
 				result[field] = fmt.Sprintf("%v", values[i])
-			} else {
-				result[field] = ""
 			}
 		}
 	}

@@ -173,6 +173,15 @@ func (appConf *AppConfig) StateKeys() []string {
 			appConf.BConfig.RegisterAddr(),
 		)
 		keys = append(keys, configPath)
+
+		grpcConfigPath := fmt.Sprintf("/appState/%v/%v/%v/%v/%v/state",
+			appConf.BConfig.BusinessName,
+			appConf.BConfig.GrpcRole,
+			appConf.BConfig.ShareName,
+			routeTag,
+			appConf.BConfig.RegisterGrpcAddr(),
+		)
+		keys = append(keys, grpcConfigPath)
 	}
 	return keys
 }

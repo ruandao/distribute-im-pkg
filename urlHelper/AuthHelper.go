@@ -35,8 +35,8 @@ func (helper *AuthHelper) QueryUser() string {
 	return fmt.Sprintf("%v/queryUser", helper.host)
 }
 
-func (helper *AuthHelper) GetNotLoginRandomUser() string {
-	return fmt.Sprintf("%v/getNotLoginRandomUser", helper.host)
+func (helper *AuthHelper) GetNotLoginUser() string {
+	return fmt.Sprintf("%v/getNotLoginUser", helper.host)
 }
 func (helper *AuthHelper) ReInitNotLoginSet() string {
 	return fmt.Sprintf("%v/reInitNotLoginSet", helper.host)

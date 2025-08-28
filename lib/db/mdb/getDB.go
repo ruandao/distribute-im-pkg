@@ -132,9 +132,10 @@ func _getDBConfig(ctx context.Context, bizName string, shareKey xetcd.ShareName)
 	if err != nil {
 		return nil, xerr.NewXError(err, fmt.Sprintf("can't not found config on %v %v %v", bizName, shareKey, routeTag))
 	}
-	conn := randx.SelectOne(instanceConfig.ConnConfig)
+	connKey := randx.SelectOne(instanceConfig.ConnConfig.Keys())
+	conn, _ := instanceConfig.ConnConfig.Load(connKey)
 	var _dbConfig = &DBConfig{}
-	err = json.Unmarshal([]byte(conn), _dbConfig)
+	err = json.Unmarshal([]byte(conn.(string)), _dbConfig)
 	return _dbConfig, err
 }
 
@@ -152,37 +153,43 @@ func RegisterXContent(ctx context.Context, bizNameList []string, xContent *xetcd
 			}
 			for shareKey, shareInstance := range rsc.M {
 				for routeTag, nodeConfig := range shareInstance {
-					for _, conn := range nodeConfig.ConnConfig {
+					nodeConfig.ConnConfig.Range(func(key, value any) bool {
+						ipport := key.(string)
+						conn := value.(string)
 						dbConfig := &DBConfig{}
 						err := json.Unmarshal([]byte(conn), dbConfig)
 						if err != nil {
 							msg := "数据库连接,解析失败:\n" +
 								fmt.Sprintf("业务: %v 路由: %v 分片: %v\n", bizName, routeTag, shareKey) +
+								fmt.Sprintf("ipport: %v\n", ipport) +
 								fmt.Sprintf("值: %v\n", conn) +
 								fmt.Sprintf("错误信息: %v\n", err)
 							logx.Errorf("%s", msg)
-							continue
+							return true
 						}
 						ctx := traffic.TagRoute(ctx, routeTag)
 						db, err := GetDBByShareKey(ctx, bizName, "", dbConfig)
 						if err != nil {
 							msg := "数据库连接失败:\n" +
 								fmt.Sprintf("业务: %v 路由: %v 分片: %v\n", bizName, routeTag, shareKey) +
+								fmt.Sprintf("ipport: %v\n", ipport) +
 								fmt.Sprintf("值: %v\n", conn) +
 								fmt.Sprintf("错误信息: %v\n", err)
 							logx.Errorf("%s", msg)
-							continue
+							return true
 						}
 						err = SelectTest(db)
 						if err != nil {
 							msg := "数据库SelectTest失败:\n" +
 								fmt.Sprintf("业务: %v 路由: %v 分片: %v\n", bizName, routeTag, shareKey) +
+								fmt.Sprintf("ipport: %v\n", ipport) +
 								fmt.Sprintf("值: %v\n", conn) +
 								fmt.Sprintf("错误信息: %v\n", err)
 							logx.Errorf("%s", msg)
-							continue
+							return true
 						}
-					}
+						return true
+					})
 				}
 			}
 		})

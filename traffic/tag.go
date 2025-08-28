@@ -1,9 +1,8 @@
 package traffic
 
 import (
-	"context"
-
 	"github.com/ruandao/distribute-im-pkg/xetcd"
+	"context"
 )
 
 // 定义一个自定义类型替代空匿名结构体
