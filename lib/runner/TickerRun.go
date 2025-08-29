@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
@@ -17,10 +18,10 @@ func RunForever(ctx context.Context, name string, taskF func() bool) {
 	}
 }
 
-func RunWithTicker(ctx context.Context, ticker time.Ticker, taskF func() bool) (context.Context, context.CancelFunc) {
+func RunWithTicker(ctx context.Context, runName string, ticker time.Ticker, taskF func() bool) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	go RunForever(ctx, "RunWithTicker", func() bool {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithTicker", runName), func() bool {
 		select {
 		case <-ctx.Done():
 			return false
@@ -36,11 +37,11 @@ func RunWithTicker(ctx context.Context, ticker time.Ticker, taskF func() bool) (
 
 	return ctx, cancel
 }
-func RunWithTickerDuration(ctx context.Context, tickerDuration time.Duration, taskF func() bool) (context.Context, context.CancelFunc) {
+func RunWithTickerDuration(ctx context.Context, runName string, tickerDuration time.Duration, taskF func() bool) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 	ticker := time.NewTicker(tickerDuration)
 
-	go RunForever(ctx, "RunWithTickerDuration", func() bool {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithTickerDuration", runName), func() bool {
 		select {
 		case <-ctx.Done():
 			return false
@@ -58,10 +59,10 @@ func RunWithTickerDuration(ctx context.Context, tickerDuration time.Duration, ta
 	return ctx, cancel
 }
 
-func RunWithCancel(ctx context.Context, taskF func() bool) (context.Context, context.CancelFunc) {
+func RunWithCancel(ctx context.Context, runName string, taskF func() bool) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	go RunForever(ctx, "RunWithCancel", func() bool {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithCancel", runName), func() bool {
 		select {
 		case <-ctx.Done():
 			return false
