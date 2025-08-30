@@ -13,7 +13,7 @@ func RunForever(ctx context.Context, name string, taskF func() bool) {
 	for {
 		cnt++
 		if cnt %1000 == 0 {
-			logx.DebugX(name)()
+			logx.DebugX(name)(cnt)
 		}
 		
 		goon := taskF()
