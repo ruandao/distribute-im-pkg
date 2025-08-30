@@ -9,8 +9,13 @@ import (
 )
 
 func RunForever(ctx context.Context, name string, taskF func() bool) {
+	cnt := 0
 	for {
-		logx.DebugX(name)()
+		cnt++
+		if cnt %1000 == 0 {
+			logx.DebugX(name)()
+		}
+		
 		goon := taskF()
 		if !goon {
 			return
