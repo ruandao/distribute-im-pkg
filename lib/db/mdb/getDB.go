@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
 
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
 	"github.com/ruandao/distribute-im-pkg/lib/randx"
+	"github.com/ruandao/distribute-im-pkg/lib/runner"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	"github.com/ruandao/distribute-im-pkg/xetcd"
@@ -67,12 +70,36 @@ func GetDB(ctx context.Context, bizName string, model IShareModel) (*gorm.DB, er
 	if model != nil {
 		db = db.Table(model.TableName())
 	}
-	// return db.Debug(),err
+	// return db.Debug(), err
 	return db, err
 }
 
 var dbMap sync.Map
 var dbMapLocker sync.Mutex
+var openDBCnt int
+var ctxDoneCnt int
+
+// appendToFile 向指定文件追加内容
+func appendToFile(filename string, content string) error {
+	// 打开文件，使用 O_APPEND 标志位表示追加模式
+	// O_CREATE 表示如果文件不存在则创建
+	// O_WRONLY 表示只写模式
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close() // 确保文件在函数退出时关闭
+
+	// 向文件写入内容
+	if _, err := file.WriteString(content); err != nil {
+		return err
+	}
+
+	return nil
+}
+func SyncCnt() {
+	appendToFile("dbConnectOpenCnt.log", fmt.Sprintf("time: %v openDBCnt: %v ctxDoneCnt: %v\n", time.Now().Format("2006-01-02 15:04:05.000"), openDBCnt, ctxDoneCnt))
+}
 
 func GetDBByShareKey(ctx context.Context, bizName string, shareKey xetcd.ShareName, _dbConfig *DBConfig) (*gorm.DB, error) {
 	// 我们将根据 shareId 计算出 shareKey
@@ -101,28 +128,62 @@ func GetDBByShareKey(ctx context.Context, bizName string, shareKey xetcd.ShareNa
 		if err != nil {
 			return nil, xerr.NewXError(err, "连接数据库失败")
 		}
+		go func() {
+			<-ctx.Done()
+			ctxDoneCnt++
+			SyncCnt()
+		}()
+		// 获取底层 *sql.DB 对象，配置连接池
+		sqlDB, err := db.DB()
+		if err != nil {
+			return nil, xerr.NewXError(err, "获取底层 *sql.DB 对象失败")
+		}
+		openDBCnt++
+		SyncCnt()
+		// 连接池配置
+		sqlDB.SetMaxOpenConns(100)                 // 最大打开连接数（同时最多有100个连接被使用）
+		sqlDB.SetMaxIdleConns(20)                  // 最大空闲连接数（保持20个空闲连接备用）
+		sqlDB.SetConnMaxLifetime(2 * time.Hour)    // 连接的最大生存期（2小时后强制关闭重建）
+		sqlDB.SetConnMaxIdleTime(30 * time.Minute) // 连接的最大空闲时间（30分钟未使用则关闭）
 		dbMap.Store(dbConfigDSN, db)
 		return db, nil
 	}
 	return val.(*gorm.DB), nil
 }
 
-func ForEachShare(ctx context.Context, bizName string, cb func(shareKey xetcd.ShareName, retryCnt int, db *gorm.DB, err error) (stopRetry bool)) error {
+// 任意数据分片获取失败，就返回错误
+func DBsForAllShares(ctx context.Context, bizName string) (dbs []*gorm.DB, err error) {
 	shares, err := appConfigLib.GetAppConfig().GetShares(ctx, bizName)
 	if err != nil {
-		return err
+		return nil, xerr.NewXError(err, "获取数据库分片失败")
 	}
+
 	for _, shareKey := range shares {
-		var retryCnt = 0
-		for {
-			db, err := GetDBByShareKey(ctx, bizName, shareKey, nil)
-			stopRetry := cb(shareKey, retryCnt, db, err)
-			retryCnt++
-			if stopRetry {
-				break
-			}
+		db, err := GetDBByShareKey(ctx, bizName, shareKey, nil)
+		if err != nil {
+			return nil, xerr.NewXError(err, "获取数据库分片失败")
 		}
+		dbs = append(dbs, db)
 	}
+	return dbs, err
+}
+
+func ForEachShare(ctx context.Context, bizName string, cb func(shareKey xetcd.ShareName, retryCnt int, db *gorm.DB, err error) (stopRetry bool)) error {
+	sharesCh, err := appConfigLib.GetAppConfig().GetSharesCh(ctx, bizName)
+	if err != nil {
+		return xerr.NewXError(err, "获取数据库分片失败")
+	}
+	runner.RunAndWait(len(sharesCh), func() {
+		for shareKey := range sharesCh {
+			var retryCnt = 0
+			runner.RunForever(ctx, fmt.Sprintf("ForEachShare %v", shareKey), func() bool {
+				db, err := GetDBByShareKey(ctx, bizName, shareKey, nil)
+				stopRetry := cb(shareKey, retryCnt, db, err)
+				retryCnt++
+				return !stopRetry
+			})
+		}
+	})
 	return nil
 }
 
@@ -146,7 +207,7 @@ func RegisterXContent(ctx context.Context, bizNameList []string, xContent *xetcd
 	_xContent = xContent
 
 	for _, bizName := range bizNameList {
-		xContent.ClusterWatch(bizName, func(rsc *xetcd.RouteShareConns, err error) {
+		xContent.ClusterWatch(ctx, bizName, func(rsc *xetcd.RouteShareConns, err error) {
 			if err != nil {
 				logx.Errorf("db config for %v no found, err: %v", bizName, err)
 				return

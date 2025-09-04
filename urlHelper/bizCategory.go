@@ -9,6 +9,8 @@ const CONST_BUSINESS_COMET = "comet"
 const State_Auth_MySQL = "/appState/auth/mysql"
 const State_IM_Redis = "/appState/im/redis"
 
+const State_Friend_MySQL = "/appState/auth/mysql"
+
 const State_Auth_http = "/appState/auth/http"
 const State_Auth_grpc = "/appState/auth/grpc"
 

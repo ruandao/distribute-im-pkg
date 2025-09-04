@@ -2,16 +2,12 @@ package rdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ruandao/distribute-im-pkg/config/appConfigLib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
-	"github.com/ruandao/distribute-im-pkg/lib/randx"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
-	"github.com/ruandao/distribute-im-pkg/traffic"
 	"github.com/ruandao/distribute-im-pkg/xetcd"
 
 	"github.com/go-redis/redis/v8"
@@ -20,180 +16,37 @@ import (
 // RedisImpl 实现 IRedis 接口
 type RedisImpl struct {
 	// 可以保留一些必要的字段
-	bizName         string
-	xContent        *xetcd.XContent
-	_cluster        *xetcd.RouteShareConns
-	watchRemoveFunc func()
-	appConfig       *appConfigLib.AppConfig
+	agent *RedisAgent
 }
 
 // NewRedisImpl 创建一个新的 Redis 实现实例
 func NewRedisImpl(bizName string, xContent *xetcd.XContent, appConfig *appConfigLib.AppConfig) *RedisImpl {
 	redisImpl := &RedisImpl{
-		bizName:   bizName,
-		xContent:  xContent,
-		appConfig: appConfig,
+		agent: NewRedisAgent(bizName, xContent, appConfig),
 	}
-	redisImpl.Watch()
 	return redisImpl
 }
 
-func (r *RedisImpl) Watch() {
-	ctx := context.Background()
-	var cb xetcd.ClusterChangeCB = func(cluster *xetcd.RouteShareConns, err error) {
-		if err != nil {
-			logx.Errorf("redis biz route %v not found, err: %v", r.bizName, err)
-			r._cluster = nil
-			return
-		}
-		for _, shareClusters := range cluster.M {
-			for _, shareConns := range shareClusters {
-				shareConns.ConnConfig.Range(func(key, value any) bool {
-					ipport := key.(string)
-					conn := value.(string)
-					redisC := &RedisConfig{}
-					err := json.Unmarshal([]byte(conn), redisC)
-					if err != nil {
-						logx.ErrorX("redis config unmarshal failed ")(
-							fmt.Sprintf("ipport: %v ", ipport),
-							fmt.Sprintf("val: %v ", conn),
-							fmt.Sprintf("err: %v ", err),
-						)
-						return true
-					}
-					if err = PingTest(r._GetRedisClient(ctx, "", "", "", redisC)); err != nil {
-						logx.ErrorX("ping test to redis instance failed")(
-							fmt.Sprintf("config: %v", redisC),
-						)
-						return true
-					}
-					return true
-				})
-
-			}
-		}
-
-		if cluster == nil {
-			logx.Errorf("redis biz route %v not found, err: %v", r.bizName, err)
-		}
-		r._cluster = cluster
-	}
-	r.watchRemoveFunc = r.xContent.ClusterWatch(r.bizName, cb)
-	conns, err := r.xContent.GetDepServicesCluster(r.bizName)
-	cb(conns, err)
-	err = r.Set(ctx, "helloTest", "success", time.Hour)
-	if err != nil {
-		logx.Errorf("redis set %v with val: %v fail with err: %v", "helloTest", "success", err)
-		return
-	}
-}
-
 func (r *RedisImpl) Close() {
-	if r.watchRemoveFunc != nil {
-		logx.Errorf("call RedisImpl close")
-		r.watchRemoveFunc()
-		r.watchRemoveFunc = nil
-	}
+	r.agent.Close()
 }
 
-func (r *RedisImpl) getRedisC(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string) (*RedisConfig, error) {
-	shareKey, err := r.appConfig.GetShareKeyFromId(ctx, bizName, key)
-	if err != nil {
-		return nil, err
-	}
-	instanceC, err := r._cluster.Get(shareKey, routeTag)
-	if err != nil {
-		return nil, err
+func (r *RedisImpl) separateKey2ClientGroup(ctx context.Context, keys []string, forEachClientFunc KeysForClient) (map[string]ValErrItem, error) {
+	if len(keys) == 0 {
+		return nil, xerr.NewXError(fmt.Errorf("keys 不能为空"))
 	}
 
-	connKey := randx.SelectOne(instanceC.ConnConfig.Keys())
-	connStr, _ := instanceC.ConnConfig.Load(connKey)
-	redisC := &RedisConfig{}
-	err = json.Unmarshal([]byte(connStr.(string)), redisC)
-	if err != nil {
-		return nil, xerr.NewXError(err, fmt.Sprintf("redis config parse failed val: #%v#", connStr))
-	}
-	return redisC, nil
-}
-
-func (r *RedisImpl) GetRedisClient(ctx context.Context, bizName string, key string) (*redis.Client, error) {
-	routeTag := traffic.GetRouteTag(ctx)
-	return r._GetRedisClient(ctx, bizName, routeTag, key, nil)
-}
-
-var dbMap sync.Map
-var dbMapLocker sync.Mutex
-
-func (r *RedisImpl) _GetRedisClient(ctx context.Context, bizName string, routeTag xetcd.RouteTag, key string, _redisC *RedisConfig) (rCli *redis.Client, err error) {
-	// 创建Redis客户端
-	// in default, the _redisC will be nil
-	redisC := _redisC
-	if redisC == nil {
-		redisC, err = r.getRedisC(ctx, bizName, routeTag, key)
-		if err != nil {
-			return nil, xerr.NewXError(err)
-		}
-	}
-
-	connStr := redisC.getDSN()
-	val, ok := dbMap.Load(connStr)
-	if !ok {
-		dbMapLocker.Lock()
-		defer dbMapLocker.Unlock()
-		val, ok = dbMap.Load(connStr)
-		if ok {
-			return val.(*redis.Client), nil
-		}
-		rdb := redis.NewClient(&redis.Options{
-			Addr:     redisC.Addr,
-			Password: redisC.Password,
-			DB:       redisC.DB,
-			PoolSize: redisC.PoolSize,
-		})
-		dbMap.Store(connStr, rdb)
-		return rdb, nil
-
-	}
-
-	return val.(*redis.Client), nil
-}
-
-// getRedisClientByKey 根据 key 动态选择 Redis 实例
-func (r *RedisImpl) getRedisClientByKey(ctx context.Context, key string) (*redis.Client, error) {
-	if len(key) == 0 {
-		return nil, xerr.NewXError(fmt.Errorf("key 不能为空"))
-	}
-
-	// 直接调用同包中的 GetRedisClient 函数
-	client, err := r.GetRedisClient(ctx, r.bizName, key)
-	if err != nil {
-		return nil, err
-	}
-
-	if client == nil {
-		return nil, xerr.NewXError(fmt.Errorf("获取 Redis 客户端失败"))
-	}
-
-	return client, nil
+	return r.agent.separateKey2AgentGroup(ctx, keys, forEachClientFunc)
 }
 
 // Set 设置键值对
 func (r *RedisImpl) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
-	client, err := r.getRedisClientByKey(ctx, key)
-	if err != nil {
-		return err
-	}
-
-	if expiration > 0 {
-		return xerr.NewXError(client.Set(ctx, key, value, expiration).Err())
-	} else {
-		return xerr.NewXError(client.Set(ctx, key, value, 0).Err())
-	}
+	return r.agent.Set(ctx, key, value, expiration)
 }
 
 // SetNX 只有当键不存在时才设置键值
 func (r *RedisImpl) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return false, xerr.NewXError(err)
 	}
@@ -209,7 +62,7 @@ func (r *RedisImpl) SetNX(ctx context.Context, key string, value interface{}, ex
 
 // ZRem 从有序集合中删除一个或多个成员
 func (r *RedisImpl) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return 0, err
 	}
@@ -221,7 +74,7 @@ func (r *RedisImpl) ZRem(ctx context.Context, key string, members ...interface{}
 // Rename 重命名键
 func (r *RedisImpl) Rename(ctx context.Context, oldKey string, newKey string) error {
 	// 使用旧键获取Redis客户端
-	client, err := r.getRedisClientByKey(ctx, oldKey)
+	client, err := r.agent.getAgentByShareId(ctx, oldKey)
 	if err != nil {
 		return err
 	}
@@ -236,7 +89,7 @@ func (r *RedisImpl) Rename(ctx context.Context, oldKey string, newKey string) er
 
 // ZCount 获取有序集合中指定分数范围内的成员数量
 func (r *RedisImpl) ZCount(ctx context.Context, key string, min string, max string) (int64, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return 0, err
 	}
@@ -247,7 +100,7 @@ func (r *RedisImpl) ZCount(ctx context.Context, key string, min string, max stri
 
 // Get 获取键值
 func (r *RedisImpl) Get(ctx context.Context, key string) (string, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +111,7 @@ func (r *RedisImpl) Get(ctx context.Context, key string) (string, error) {
 
 // HMSet 设置哈希表值
 func (r *RedisImpl) HMSet(ctx context.Context, key string, values ...interface{}) error {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -268,7 +121,7 @@ func (r *RedisImpl) HMSet(ctx context.Context, key string, values ...interface{}
 
 // HMGet 获取哈希表值
 func (r *RedisImpl) HMGet(ctx context.Context, key string, fields ...string) (map[string]string, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +145,7 @@ func (r *RedisImpl) HMGet(ctx context.Context, key string, fields ...string) (ma
 
 // Del 删除键
 func (r *RedisImpl) Del(ctx context.Context, key string) error {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -302,7 +155,7 @@ func (r *RedisImpl) Del(ctx context.Context, key string) error {
 
 // Exists 检查键是否存在
 func (r *RedisImpl) Exists(ctx context.Context, key string) (bool, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return false, err
 	}
@@ -317,7 +170,7 @@ func (r *RedisImpl) Exists(ctx context.Context, key string) (bool, error) {
 
 // Expire 设置键的过期时间（秒）
 func (r *RedisImpl) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return xerr.NewXError(err, "get redis client failed")
 	}
@@ -335,7 +188,7 @@ func (r *RedisImpl) Expire(ctx context.Context, key string, expiration time.Dura
 
 // ZRangeByScore 获取有序集合中指定分数范围内的成员
 func (r *RedisImpl) ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) ([]string, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -346,11 +199,163 @@ func (r *RedisImpl) ZRangeByScore(ctx context.Context, key string, opt *redis.ZR
 
 // ZAdd 向有序集合中添加成员
 func (r *RedisImpl) ZAdd(ctx context.Context, key string, members ...*redis.Z) (int64, error) {
-	client, err := r.getRedisClientByKey(ctx, key)
+	client, err := r.agent.getAgentByShareId(ctx, key)
 	if err != nil {
 		return 0, err
 	}
 
 	ret, err := client.ZAdd(ctx, key, members...).Result()
 	return ret, xerr.NewXError(err)
+}
+
+// HScan 迭代哈希表中的键值对
+func (r *RedisImpl) HScan(ctx context.Context, key string, cursor uint64, match string, count int64) (uint64, map[string]string, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// 调用 Redis 客户端的 HScan 方法
+	cmd := client.HScan(ctx, key, cursor, match, count)
+
+	// 获取扫描结果
+	keysAndValues, nextCursor, err := cmd.Result()
+	if err != nil {
+		return 0, nil, xerr.NewXError(err)
+	}
+
+	// 解析返回的结果，转换为 map
+	resultMap := make(map[string]string)
+	for i := 1; i < len(keysAndValues); i += 2 {
+		if i+1 < len(keysAndValues) {
+			resultMap[keysAndValues[i]] = keysAndValues[i+1]
+		}
+	}
+
+	// 第一个返回值是下一个游标
+	return nextCursor, resultMap, nil
+}
+
+type ValErrItem struct {
+	Val any
+	Err error
+}
+
+func (r *RedisImpl) MGet(ctx context.Context, keys ...string) (map[string]ValErrItem, error) {
+	if len(keys) == 0 {
+		return nil, xerr.NewXError(fmt.Errorf("keys 不能为空"))
+	}
+
+	// 使用第一个key获取Redis客户端
+	clientM, err := r.separateKey2ClientGroup(ctx, keys, func(client *redis.Client, keyArr []string) map[string]ValErrItem {
+		retM := make(map[string]ValErrItem)
+		values, err := client.MGet(ctx, keyArr...).Result()
+		for idx, key := range keyArr {
+			retM[key] = ValErrItem{Val: values[idx], Err: err}
+		}
+		return retM
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return clientM, nil
+}
+
+// MSet 批量设置多个键值对
+func (r *RedisImpl) MSet(ctx context.Context, keyValM map[string]any) (map[string]ValErrItem, error) {
+	keys := make([]string, 0, len(keyValM))
+	for key := range keyValM {
+		keys = append(keys, key)
+	}
+
+	retM, err := r.separateKey2ClientGroup(ctx, keys, func(client *redis.Client, keyArr []string) map[string]ValErrItem {
+		values := make([]any, 0, 2*len(keyArr))
+		for _, key := range keyArr {
+			values = append(values, key)
+			values = append(values, keyValM[key])
+		}
+
+		// 调用Redis客户端的MSet方法
+		err := client.MSet(ctx, values...).Err()
+		clientRetM := make(map[string]ValErrItem, len(keyArr))
+		for _, key := range keyArr {
+			clientRetM[key] = ValErrItem{Err: err}
+		}
+		return clientRetM
+	})
+	return retM, err
+}
+
+// ZRange 获取有序集合中指定索引范围内的成员
+func (r *RedisImpl) ZRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return nil, xerr.NewXError(err)
+	}
+	result, err := client.ZRange(ctx, key, start, stop).Result()
+	return result, xerr.NewXError(err)
+}
+
+// ZRangeWithScores 获取有序集合中指定索引范围内的成员及其分数
+func (r *RedisImpl) ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]redis.Z, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return nil, xerr.NewXError(err)
+	}
+	result, err := client.ZRangeWithScores(ctx, key, start, stop).Result()
+	return result, xerr.NewXError(err)
+}
+
+func (r *RedisImpl) HMDel(ctx context.Context, key string, fields ...string) (int64, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return 0, xerr.NewXError(err)
+	}
+	count, err := client.HDel(ctx, key, fields...).Result()
+	return count, xerr.NewXError(err)
+}
+
+// 获取哈希表中所有字段和值
+func (r *RedisImpl) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return nil, xerr.NewXError(err)
+	}
+	result, err := client.HGetAll(ctx, key).Result()
+	return result, xerr.NewXError(err)
+}
+
+// 批量获取多个哈希表的字段数量
+func (r *RedisImpl) MHCount(ctx context.Context, keys ...string) (map[string]ValErrItem, error) {
+	if len(keys) == 0 {
+		return nil, xerr.NewXError(fmt.Errorf("keys 不能为空"))
+	}
+
+	itemM, err := r.agent.separateKey2AgentGroup(ctx, keys, func(client *redis.Client, keyArr []string) (map[string]ValErrItem) {
+		retM := make(map[string]ValErrItem)
+		for _, key := range keyArr {
+			intCmd := client.HLen(ctx, key)
+			retM[key] = ValErrItem{Val: intCmd.Val(),Err: intCmd.Err()}
+		}
+		return retM
+	})
+	return itemM, err
+}
+
+// 移除键的过期时间，使其持久化
+func (r *RedisImpl) Persist(ctx context.Context, key string) (bool, error) {
+	client, err := r.agent.getAgentByShareId(ctx, key)
+	if err != nil {
+		return false, xerr.NewXError(err)
+	}
+	result, err := client.Persist(ctx, key).Result()
+	return result, xerr.NewXError(err)
+}
+
+// 移除键的过期时间，使其持久化
+func (r *RedisImpl) PersistX(ctx context.Context, key string) error {
+	_, err := r.Persist(ctx, key)
+	return err
 }

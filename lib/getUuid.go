@@ -32,6 +32,22 @@ func (i Int64S) ToString() string {
 func (i Int64S) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strconv.FormatInt(int64(i), 10))
 }
+func (i *Int64S) UnmarshJSON(data []byte) error {
+	n, err := strconv.Atoi(string(data))
+	if err != nil {
+		return xerr.NewXError(err, "解析字节数组到Int64S失败")
+	}
+	*i = Int64S(n)
+	return nil
+}
+func (i *Int64S) UnmarshalText(data []byte) error {
+	n, err := strconv.Atoi(string(data))
+	if err != nil {
+		return xerr.NewXError(err, "解析字节数组到Int64S失败")
+	}
+	*i = Int64S(n)
+	return nil
+}
 
 func GetUuid() Int64S {
 	if xNode == nil {

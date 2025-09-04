@@ -1,0 +1,111 @@
+<mxfile host="65bd71144e">
+    <diagram id="c1GqPE1ERO4Si1zRY_QU" name="第 1 页">
+        <mxGraphModel dx="1194" dy="622" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="inputCh" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="30" y="435" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" style="edgeStyle=none;html=1;" parent="1" source="2" target="11" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="220" y="469.2622950819673" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="13" style="edgeStyle=none;html=1;" parent="1" source="11" target="18" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="470" y="464.60106382978734" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="11" value="GoPipe&amp;nbsp; 并行计算" style="swimlane;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="310" width="200" height="302.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="" style="rounded=1;whiteSpace=wrap;html=1;" parent="11" vertex="1">
+                    <mxGeometry x="30" y="45" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="" style="rounded=1;whiteSpace=wrap;html=1;" parent="11" vertex="1">
+                    <mxGeometry x="30" y="120" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="" style="rounded=1;whiteSpace=wrap;html=1;" parent="11" vertex="1">
+                    <mxGeometry x="30" y="205" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" style="edgeStyle=none;html=1;" parent="1" source="18" target="15" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="640" y="465.8461538461538" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="15" value="outputCh" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="700" y="430" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" value="定时定量打包" style="swimlane;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="310" width="200" height="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="BatchTicket" style="rounded=1;whiteSpace=wrap;html=1;" parent="18" vertex="1">
+                    <mxGeometry x="40" y="121.25" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="inputCh" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="29" y="823" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" style="edgeStyle=none;html=1;" parent="1" source="30" target="33" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="219" y="857.2622950819673" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="41" value="" style="edgeStyle=none;html=1;" parent="1" source="33" target="38" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="分组定时定量打包 MapBatchTicket" style="swimlane;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="219" y="698" width="431" height="302.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="43" style="edgeStyle=none;html=1;" parent="33" source="34" target="42" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="50" value="bufferSize" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="43">
+                    <mxGeometry x="0.0769" y="-2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="34" value="分组1" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="30" y="45" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="45" style="edgeStyle=none;html=1;" parent="33" source="35" target="44" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="35" value="分组2" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="30" y="120" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="47" style="edgeStyle=none;html=1;" parent="33" source="36" target="46" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="36" value="分组3" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="30" y="205" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="48" style="edgeStyle=none;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="33" source="42" target="33">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="49" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="48">
+                    <mxGeometry x="-0.0422" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="42" value="BatchTicket" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="241" y="45" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="44" value="BatchTicket" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="241" y="121.25" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="46" value="BatchTicket" style="rounded=1;whiteSpace=wrap;html=1;" parent="33" vertex="1">
+                    <mxGeometry x="241" y="205" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="37" style="edgeStyle=none;html=1;" parent="1" source="33" target="38" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="659" y="848" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="38" value="outputCh" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="699" y="818" width="120" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

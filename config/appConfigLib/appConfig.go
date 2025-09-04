@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
+	"github.com/ruandao/distribute-im-pkg/lib/runner"
 	"github.com/ruandao/distribute-im-pkg/xetcd"
 
 	"github.com/ruandao/distribute-im-pkg/config/basicConfig"
@@ -90,6 +91,10 @@ func (appConf *AppConfig) SplitIdToSeparateShare(ctx context.Context, bizName st
 	return m, nil
 }
 
+func (appConf *AppConfig) GetSharesCh(ctx context.Context, bizName string) (chan xetcd.ShareName, error) {
+	shares, err := appConf.GetShares(ctx, bizName)
+	return runner.NilOrChan(shares), err
+}
 func (appConf *AppConfig) GetShares(ctx context.Context, bizName string) ([]xetcd.ShareName, error) {
 	routeShareConns, err := appConf.XContent.GetDepServicesCluster(bizName)
 	if err != nil {

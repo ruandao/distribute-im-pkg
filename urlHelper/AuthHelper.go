@@ -21,6 +21,9 @@ func Auth(hostList ...string) *AuthHelper {
 func (helper *AuthHelper) Register() string {
 	return fmt.Sprintf("%v/register", helper.host)
 }
+func (helper *AuthHelper)Reconciliation() string {
+	return fmt.Sprintf("%v/reconciliation", helper.host)
+}
 func (helper *AuthHelper) MultipleCreateUser() string {
 	return fmt.Sprintf("%v/multipleCreateUser", helper.host)
 }

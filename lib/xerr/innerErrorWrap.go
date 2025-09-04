@@ -32,6 +32,15 @@ func (xerr *Error) String() string {
 	return fmt.Sprintf("%+v", xerr.e)
 }
 
+func AnyErr(results map[string]error) (string, error) {
+	for k,v := range results {
+		if v != nil {
+			return k, v
+		}
+	}
+	return "", nil
+}
+
 func NewXError(err error, msgArr ...string) error {
 	if err == nil {
 		return nil

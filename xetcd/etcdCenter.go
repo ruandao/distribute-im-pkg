@@ -9,6 +9,7 @@ import (
 
 	"github.com/ruandao/distribute-im-pkg/lib"
 	"github.com/ruandao/distribute-im-pkg/lib/logx"
+	"github.com/ruandao/distribute-im-pkg/lib/runner"
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	bConfLib "github.com/ruandao/distribute-im-pkg/config/basicConfig"
@@ -27,6 +28,63 @@ type XContent struct {
 	clusterWatchMap XMap
 	// string: []KVItem
 	keyWatchMap XMap
+}
+
+func (content *XContent) processKVChange(_ctx context.Context, kvChange etcdLib.WatchResponse) {
+	notifyList := []string{}
+	for _, event := range kvChange.Events {
+		switch event.Type {
+		case etcdLib.EventTypePut:
+			key := string(event.Kv.Key)
+			value := string(event.Kv.Value)
+			pre, _ := content.c.Load(key)
+			if pre != value {
+				content.c.Store(key, value)
+				notifyList = append(notifyList, key)
+				logx.Info(fmt.Sprintf("update key: %v pre: %v new: %v", key, pre, value))
+			}
+		case etcdLib.EventTypeDelete:
+			key := string(event.Kv.Key)
+			content.c.Delete(key)
+			afterDelVal, ok := content.c.Load(key)
+			notifyList = append(notifyList, key)
+			logx.Info(fmt.Sprintf("delete key: %v afterDelVal: %v ok: %v", key, afterDelVal, ok))
+		}
+	}
+
+	notifySet := lib.NewXSet(notifyList)
+
+	clusterSet := lib.NewXSet(content.clusterWatchMap.Keys())
+	clusterNotifyList := clusterSet.Intersect(notifySet, func(selfElem, argElem string) bool {
+		return strings.HasPrefix(argElem, selfElem)
+	})
+
+	kvSet := lib.NewXSet(content.keyWatchMap.Keys())
+	kvNotifyList := kvSet.Intersect(notifySet, func(selfElem, argElem string) bool {
+		return selfElem == argElem
+	})
+
+	for _, key := range clusterNotifyList {
+		_updateList, _ := content.clusterWatchMap.Load(key)
+		if _updateList == nil {
+			continue
+		}
+		cluster, err := content.GetDepServicesCluster(key)
+		for _, updateItem := range _updateList.([]*ClusterItem) {
+			updateItem.changeFunc(cluster, err)
+		}
+	}
+
+	for _, key := range kvNotifyList {
+		_updateList, _ := content.clusterWatchMap.Load(key)
+		if _updateList == nil {
+			continue
+		}
+		retV, err := content.Get(key)
+		for _, updateItem := range _updateList.([]*KVItem) {
+			updateItem.changeFunc(retV, err)
+		}
+	}
 }
 
 func (content *XContent) connect(ctx context.Context) error {
@@ -57,75 +115,20 @@ func (content *XContent) connect(ctx context.Context) error {
 		content.cancelF = cancelF
 		ch := cli.Watch(ctx, "/", etcdLib.WithPrefix())
 		logx.DebugX("etcdWatch open")("")
-		defer func() {
-			logx.DebugX("etcdWatch closed")("")
-		}()
-		for {
+		defer logx.DebugX("etcdWatch closed")("")
+
+		runner.RunForever(ctx, "connect", func() (goon bool) {
 			select {
 			case kvChange, ok := <-ch:
 				if !ok {
-					break
+					return false
 				}
-
-				notifyList := []string{}
-				for _, event := range kvChange.Events {
-					switch event.Type {
-					case etcdLib.EventTypePut:
-						key := string(event.Kv.Key)
-						value := string(event.Kv.Value)
-						pre, _ := content.c.Load(key)
-						if pre != value {
-							content.c.Store(key, value)
-							notifyList = append(notifyList, key)
-							logx.Info(fmt.Sprintf("update key: %v pre: %v new: %v", key, pre, value))
-						}
-					case etcdLib.EventTypeDelete:
-						key := string(event.Kv.Key)
-						content.c.Delete(key)
-						afterDelVal, ok := content.c.Load(key)
-						notifyList = append(notifyList, key)
-						logx.Info(fmt.Sprintf("delete key: %v afterDelVal: %v ok: %v", key, afterDelVal, ok))
-					}
-				}
-
-				notifySet := lib.NewXSet(notifyList)
-
-				clusterSet := lib.NewXSet(content.clusterWatchMap.Keys())
-				clusterNotifyList := clusterSet.Intersect(notifySet, func(selfElem, argElem string) bool {
-					return strings.HasPrefix(argElem, selfElem)
-				})
-
-				kvSet := lib.NewXSet(content.keyWatchMap.Keys())
-				kvNotifyList := kvSet.Intersect(notifySet, func(selfElem, argElem string) bool {
-					return selfElem == argElem
-				})
-
-				for _, key := range clusterNotifyList {
-					_updateList, _ := content.clusterWatchMap.Load(key)
-					if _updateList == nil {
-						continue
-					}
-					cluster, err := content.GetDepServicesCluster(key)
-					for _, updateItem := range _updateList.([]*ClusterItem) {
-						updateItem.changeFunc(cluster, err)
-					}
-				}
-
-				for _, key := range kvNotifyList {
-					_updateList, _ := content.clusterWatchMap.Load(key)
-					if _updateList == nil {
-						continue
-					}
-					retV, err := content.Get(key)
-					for _, updateItem := range _updateList.([]*KVItem) {
-						updateItem.changeFunc(retV, err)
-					}
-				}
-
+				content.processKVChange(ctx, kvChange)
 			case <-content.closeCh:
-				return
+				return false
 			}
-		}
+			return true
+		})
 	}()
 	return nil
 }
@@ -312,13 +315,13 @@ func (content *XContent) KeyWatchRemove(wItem *KVItem) {
 	}
 }
 
-func (content *XContent) ClusterWatch(keyPrefix string, changeFunc ClusterChangeCB) func() {
+func (content *XContent) ClusterWatch(ctx context.Context, keyPrefix string, changeFunc ClusterChangeCB) func() {
 	cnt := 10
 	for cnt > 0 {
 		cnt--
 		wItem := &ClusterItem{keyPrefix: keyPrefix, changeFunc: changeFunc}
 		removeF := func() {
-			content.ClusterWatchRemove(wItem)
+			content.ClusterWatchRemove(ctx, wItem)
 		}
 		pre, loaded := content.clusterWatchMap.LoadOrStore(keyPrefix, []*ClusterItem{wItem})
 		if !loaded {
@@ -339,11 +342,11 @@ func (content *XContent) ClusterWatch(keyPrefix string, changeFunc ClusterChange
 	return nil
 }
 
-func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
-	for {
+func (content *XContent) ClusterWatchRemove(ctx context.Context, wItem *ClusterItem) {
+	runner.RunForever(ctx, "ClusterWatchRemove", func() (goon bool) {
 		pre, _ := content.clusterWatchMap.Load(wItem.keyPrefix)
 		if pre == nil {
-			return
+			return false
 		}
 		newList := []*ClusterItem{}
 		for _, item := range pre.([]*ClusterItem) {
@@ -359,9 +362,10 @@ func (content *XContent) ClusterWatchRemove(wItem *ClusterItem) {
 			updateSuccess = content.clusterWatchMap.CompareAndSwap(wItem.keyPrefix, pre, newList)
 		}
 		if updateSuccess {
-			return
+			return false
 		}
-	}
+		return true
+	})
 }
 
 func New(bConfig *bConfLib.BConfig) (*XContent, error) {

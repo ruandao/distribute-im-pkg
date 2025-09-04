@@ -3,11 +3,20 @@ package lib
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 
 	"github.com/ruandao/distribute-im-pkg/lib/xerr"
 
 	"github.com/spf13/viper"
 )
+
+func ParseInt(data string, err error) (int64, error) {
+	if err != nil {
+		return 0, err
+	}
+	val, err := strconv.ParseInt(data, 10, 32)
+	return val, xerr.NewXError(err)
+}
 
 func ReadFromJSON(dataBytes []byte, store any) error {
 	v := viper.New()
