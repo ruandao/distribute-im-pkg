@@ -168,18 +168,16 @@ func DBsForAllShares(ctx context.Context, bizName string) (dbs []*gorm.DB, err e
 	return dbs, err
 }
 
-func ForEachShare(ctx context.Context, bizName string, cb func(shareKey xetcd.ShareName, retryCnt int, db *gorm.DB, err error) (stopRetry bool)) error {
+func ForEachShare(ctx context.Context, bizName string, cb func(shareKey xetcd.ShareName, runCnt int, db *gorm.DB, err error) (stopRetry bool)) error {
 	sharesCh, err := appConfigLib.GetAppConfig().GetSharesCh(ctx, bizName)
 	if err != nil {
 		return xerr.NewXError(err, "获取数据库分片失败")
 	}
 	runner.RunAndWait(len(sharesCh), func() {
 		for shareKey := range sharesCh {
-			var retryCnt = 0
-			runner.RunForever(ctx, fmt.Sprintf("ForEachShare %v", shareKey), func() bool {
+			runner.RunForever(ctx, fmt.Sprintf("ForEachShare %v", shareKey), func(runCnt int) bool {
 				db, err := GetDBByShareKey(ctx, bizName, shareKey, nil)
-				stopRetry := cb(shareKey, retryCnt, db, err)
-				retryCnt++
+				stopRetry := cb(shareKey, runCnt, db, err)
 				return !stopRetry
 			})
 		}

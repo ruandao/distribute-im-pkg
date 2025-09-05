@@ -117,7 +117,7 @@ func (content *XContent) connect(ctx context.Context) error {
 		logx.DebugX("etcdWatch open")("")
 		defer logx.DebugX("etcdWatch closed")("")
 
-		runner.RunForever(ctx, "connect", func() (goon bool) {
+		runner.RunForever(ctx, "connect", func(runCnt int) (goon bool) {
 			select {
 			case kvChange, ok := <-ch:
 				if !ok {
@@ -343,7 +343,7 @@ func (content *XContent) ClusterWatch(ctx context.Context, keyPrefix string, cha
 }
 
 func (content *XContent) ClusterWatchRemove(ctx context.Context, wItem *ClusterItem) {
-	runner.RunForever(ctx, "ClusterWatchRemove", func() (goon bool) {
+	runner.RunForever(ctx, "ClusterWatchRemove", func(runCnt int) (goon bool) {
 		pre, _ := content.clusterWatchMap.Load(wItem.keyPrefix)
 		if pre == nil {
 			return false

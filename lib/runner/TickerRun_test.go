@@ -1,13 +1,12 @@
 package runner_test
 
 import (
+	"github.com/ruandao/distribute-im-pkg/lib/runner"
 	"context"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ruandao/distribute-im-pkg/lib/runner"
 )
 
 func TestGo(t *testing.T) {
@@ -70,8 +69,8 @@ func TestGoWithWaitGroup(t *testing.T) {
 func TestRunForever(t *testing.T) {
 	cnt := 0
 	targetCnt := 10010
-	runner.RunForever(context.Background(), "testing", func() (goon bool) {
-		if cnt < targetCnt {
+	runner.RunForever(context.Background(), "testing", func(runCnt int) (goon bool) {
+		if runCnt < targetCnt {
 			cnt++
 			return true
 		}

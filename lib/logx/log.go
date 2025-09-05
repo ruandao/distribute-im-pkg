@@ -28,6 +28,7 @@ func getEncoder() zapcore.Encoder {
 	return zapcore.NewConsoleEncoder(encoderConfig)
 	// return zapcore.NewJSONEncoder(encoderConfig)
 }
+
 // 创建文件写入器
 func getLogWriter(filePath string) zapcore.WriteSyncer {
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -48,11 +49,10 @@ func _getLogger(suffix string) (*zap.Logger, error) {
 		return _logger.(*zap.Logger), nil
 	}
 
-
 	// 创建日志文件写入器
 	allWriter := getLogWriter(fName)
 
-		// 设置日志格式
+	// 设置日志格式
 	encoder := getEncoder()
 
 	// 设置不同级别对应的写入器
@@ -62,7 +62,7 @@ func _getLogger(suffix string) (*zap.Logger, error) {
 	core := zapcore.NewTee(nameCore)
 
 	// 创建Logger实例
-	logger := zap.New(core, 
+	logger := zap.New(core,
 		zap.AddCaller(),
 		zap.AddCallerSkip(1),
 		zap.AddStacktrace(zapcore.ErrorLevel),
@@ -75,7 +75,7 @@ func _getLogger(suffix string) (*zap.Logger, error) {
 // 初始化日志
 func NewLogger() (*zap.Logger, error) {
 
-		// 定义两个日志文件的路径
+	// 定义两个日志文件的路径
 	allLogPath := "_log/log.all"
 	infoLogPath := "_log/log.info"
 	warnLogPath := "_log/log.warn"
@@ -87,7 +87,7 @@ func NewLogger() (*zap.Logger, error) {
 	warnWriter := getLogWriter(warnLogPath)
 	errorWriter := getLogWriter(errorLogPath)
 
-		// 设置日志格式
+	// 设置日志格式
 	encoder := getEncoder()
 
 	// 设置不同级别对应的写入器
@@ -102,7 +102,7 @@ func NewLogger() (*zap.Logger, error) {
 	baseCore := zapcore.NewTee(allCore, infoCore, warnCore, errorCore)
 
 	// 创建Logger实例
-	logger := zap.New(baseCore, 
+	logger := zap.New(baseCore,
 		zap.AddCaller(),
 		zap.AddCallerSkip(1),
 		zap.AddStacktrace(zapcore.ErrorLevel),
@@ -127,13 +127,12 @@ func init() {
 	}
 }
 
-
 func X(fSuffix string, level string) func(args ...any) {
 	return func(args ...any) {
 		logger, err := _getLogger(fSuffix)
 		if err != nil {
-			fmt.Printf("获取日志管道失败 %v %v level: %v args: %v\n",fSuffix, err, level, args)
-			return 
+			fmt.Printf("获取日志管道失败 %v %v level: %v args: %v\n", fSuffix, err, level, args)
+			return
 		}
 		switch level {
 		case "debug":
@@ -154,16 +153,17 @@ func X(fSuffix string, level string) func(args ...any) {
 	}
 
 }
-// func DebugX(msg string) func(fields ...any) {
-// 	// fmt.Printf(msg+"\n", fields...)
-// 	return func(fields ...any) {
-// 		sList := []string{msg}
-// 		for _, f := range fields {
-// 			sList = append(sList, fmt.Sprintf("%+v", f))
-// 		}
-// 		_logger.Debug(strings.Join(sList, " "))
-// 	}
-// }
+
+//	func DebugX(msg string) func(fields ...any) {
+//		// fmt.Printf(msg+"\n", fields...)
+//		return func(fields ...any) {
+//			sList := []string{msg}
+//			for _, f := range fields {
+//				sList = append(sList, fmt.Sprintf("%+v", f))
+//			}
+//			_logger.Debug(strings.Join(sList, " "))
+//		}
+//	}
 func Debug(msg string, fields ...any) {
 	// fmt.Printf(msg+"\n", fields...)
 	_logger.Debug(msg)

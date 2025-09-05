@@ -333,11 +333,11 @@ func (r *RedisImpl) MHCount(ctx context.Context, keys ...string) (map[string]Val
 		return nil, xerr.NewXError(fmt.Errorf("keys 不能为空"))
 	}
 
-	itemM, err := r.agent.separateKey2AgentGroup(ctx, keys, func(client *redis.Client, keyArr []string) (map[string]ValErrItem) {
+	itemM, err := r.agent.separateKey2AgentGroup(ctx, keys, func(client *redis.Client, keyArr []string) map[string]ValErrItem {
 		retM := make(map[string]ValErrItem)
 		for _, key := range keyArr {
 			intCmd := client.HLen(ctx, key)
-			retM[key] = ValErrItem{Val: intCmd.Val(),Err: intCmd.Err()}
+			retM[key] = ValErrItem{Val: intCmd.Val(), Err: intCmd.Err()}
 		}
 		return retM
 	})

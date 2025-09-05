@@ -85,6 +85,16 @@ func (cache *Cache) Logout(ctx context.Context, logindId string) error {
 func (cache *Cache) _cometEndpoint(uid lib.Int64S) string {
 	return fmt.Sprintf(keyCometEndpointPrefix_userId, uid.ToString())
 }
+
+func (cache *Cache) ConnExtendExpire(ctx context.Context, uid lib.Int64S) error {
+	cometKeepAliveTimeout := appConfigLib.GetAppConfig().BConfig.Get("cometKeepAliveTimeout").(int)
+	err := rdb.GetRedisC().Expire(ctx, cache._cometEndpoint(uid), time.Duration(cometKeepAliveTimeout)*time.Second)
+	if err != nil {
+		return xerr.NewXError(err, "长连接端点延期失败")
+	}
+	return nil
+}
+
 func (cache *Cache) ConnPutEndpointNX(ctx context.Context, uid lib.Int64S, host string) error {
 	cometKeepAliveTimeout := appConfigLib.GetAppConfig().BConfig.Get("cometKeepAliveTimeout").(int)
 	updateSuccess, err := rdb.GetRedisC().SetNX(ctx, cache._cometEndpoint(uid), host, time.Duration(cometKeepAliveTimeout)*time.Second)
@@ -96,6 +106,7 @@ func (cache *Cache) ConnPutEndpointNX(ctx context.Context, uid lib.Int64S, host 
 	}
 	return nil
 }
+
 func (cache *Cache) ConnGetEndpoint(ctx context.Context, uid lib.Int64S) (string, error) {
 	val, err := rdb.GetRedisC().Get(ctx, cache._cometEndpoint(uid))
 	if err == redis.Nil {
@@ -227,7 +238,7 @@ func (cache *Cache) HScanAll(ctx context.Context, scanKey string) chan *ScanItem
 		defer close(ch)
 
 		var cursor uint64 = 0
-		runner.RunForever(ctx, fmt.Sprintf("scanAll.%v", scanKey), func() bool {
+		runner.RunForever(ctx, fmt.Sprintf("scanAll.%v", scanKey), func(runCnt int) bool {
 			if ctx.Err() != nil {
 				ch <- &ScanItem{Err: xerr.NewXError(ctx.Err())}
 				return false

@@ -29,7 +29,7 @@ func Keys[T any](m map[string]T) (keys []string) {
 	return keys
 }
 
-func Arr2Ch[T any](arr []T) (chan T) {
+func Arr2Ch[T any](arr []T) chan T {
 	ch := make(chan T, len(arr))
 	for _, key := range arr {
 		ch <- key
@@ -42,6 +42,7 @@ type KeyArrItem[T any] struct {
 	Key string
 	Arr []T
 }
+
 func MapReduce[InputElem any, OutputElem any](ctx context.Context, runnerName string,
 	inputCh chan InputElem, mapF func(elem InputElem) string,
 	routineSize int,
@@ -118,7 +119,7 @@ func TicketBatch[InputElem any](ctx context.Context, runnerName string,
 	var buf []InputElem
 
 	GoAndClose(ch, 1, func() {
-		RunForever(ctx, "TicketBatch"+runnerName, func() (goon bool) {
+		RunForever(ctx, "TicketBatch"+runnerName, func(runCnt int) (goon bool) {
 			select {
 			case item, open := <-inputCh:
 				if !open {
@@ -155,6 +156,7 @@ func RangeCh[T any](ch chan T, n int, f func(item T)) {
 	})
 	wg.Wait()
 }
+
 // 一般而言, RunAndClose 中， f 函数 产生的内容，会放入到 ch 中，
 // 然后所有的 f 运行完了，就 close ch
 func RunAndClose[T any](ch chan T, n int, f func()) {
@@ -202,7 +204,7 @@ func GoWithWaitGroup(wg *sync.WaitGroup, f func()) {
 	}()
 }
 
-func RunForever(ctx context.Context, name string, taskF func() (goon bool)) {
+func RunForever(ctx context.Context, name string, taskF func(runCnt int) (goon bool)) {
 	cnt := 0
 	for {
 		cnt++
@@ -212,7 +214,7 @@ func RunForever(ctx context.Context, name string, taskF func() (goon bool)) {
 		if ctx.Err() != nil {
 			return
 		}
-		goon := taskF()
+		goon := taskF(cnt)
 		if !goon {
 			return
 		}
@@ -222,7 +224,7 @@ func RunForever(ctx context.Context, name string, taskF func() (goon bool)) {
 func RunWithTicker(ctx context.Context, runName string, ticker time.Ticker, taskF func() bool) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	go RunForever(ctx, fmt.Sprintf("%v.RunWithTicker", runName), func() bool {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithTicker", runName), func(runCnt int) bool {
 		select {
 		case <-ctx.Done():
 			return false
@@ -242,7 +244,7 @@ func RunWithTickerDuration(ctx context.Context, runName string, tickerDuration t
 	ctx, cancel := context.WithCancel(ctx)
 	ticker := time.NewTicker(tickerDuration)
 
-	go RunForever(ctx, fmt.Sprintf("%v.RunWithTickerDuration", runName), func() (goon bool) {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithTickerDuration", runName), func(runCnt int) (goon bool) {
 		select {
 		case <-ctx.Done():
 			return false
@@ -260,15 +262,15 @@ func RunWithTickerDuration(ctx context.Context, runName string, tickerDuration t
 	return ctx, cancel
 }
 
-func RunWithCancel(ctx context.Context, runName string, taskF func() bool) (context.Context, context.CancelFunc) {
+func RunWithCancel(ctx context.Context, runName string, taskF func(runCnt int) bool) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	go RunForever(ctx, fmt.Sprintf("%v.RunWithCancel", runName), func() bool {
+	go RunForever(ctx, fmt.Sprintf("%v.RunWithCancel", runName), func(runCnt int) bool {
 		select {
 		case <-ctx.Done():
 			return false
 		default:
-			goon := taskF()
+			goon := taskF(runCnt)
 			if !goon {
 				cancel()
 				return false
